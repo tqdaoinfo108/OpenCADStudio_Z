@@ -18,7 +18,7 @@ pub struct Options {
     pub chain: Option<bool>,
     pub description: Option<String>,
     pub palette: Option<bool>,
-    pub value_set: Option<ValueSet>,
+    pub(crate) value_set: Option<ValueSet>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

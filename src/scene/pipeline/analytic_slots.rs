@@ -101,7 +101,6 @@ pub(crate) struct AnalyticSlots {
 
 /// What one reference now contributes, in the order the build gave it.
 pub(crate) struct NewBlock {
-    pub source_id: u64,
     pub mesh_edge: bool,
     /// World placement of the instance (translation plus the copy's offset).
     pub position: [f64; 3],
@@ -484,7 +483,6 @@ mod tests {
 
     fn block(source_id: u64, x: f64) -> NewBlock {
         NewBlock {
-            source_id,
             mesh_edge: false,
             position: [x, 200.0, 0.0],
             depth: 0.25,

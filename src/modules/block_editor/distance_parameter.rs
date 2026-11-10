@@ -19,10 +19,10 @@ pub struct Options {
     pub angle_label: Option<String>,
     pub horizontal_label: Option<String>,
     pub vertical_label: Option<String>,
-    pub base_location: Option<BaseLocation>,
-    pub value_set: Option<ValueSet>,
-    pub angle_value_set: Option<ValueSet>,
-    pub vertical_value_set: Option<ValueSet>,
+    pub(crate) base_location: Option<BaseLocation>,
+    pub(crate) value_set: Option<ValueSet>,
+    pub(crate) angle_value_set: Option<ValueSet>,
+    pub(crate) vertical_value_set: Option<ValueSet>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

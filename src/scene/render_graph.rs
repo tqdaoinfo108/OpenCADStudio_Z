@@ -1211,17 +1211,6 @@ pub fn block_contains_hatch(
     })
 }
 
-/// Whether the block, or a block it nests, holds a WIPEOUT mask.
-pub fn block_contains_wipeout(
-    document: &Document,
-    block_name: &str,
-    memo: &mut std::collections::HashMap<String, bool>,
-) -> bool {
-    block_contains_kind(document, block_name, memo, &|entity| {
-        matches!(entity, EntityType::Wipeout(_))
-    })
-}
-
 /// Whether the block, or a block it nests, holds a solid, surface or mesh
 /// entity, the kinds that draw through the mesh cache.
 pub fn block_contains_mesh(

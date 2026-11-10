@@ -905,8 +905,6 @@ impl OpenCADStudio {
         }
         self.plugin_grip_descriptor_drag = Some(crate::plugin::grip_points::DescriptorGripDrag {
             plugin,
-            class_id: binding.class_id,
-            design_record: binding.design_record,
             chain,
             tolerance,
             handles,

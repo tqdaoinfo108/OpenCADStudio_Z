@@ -272,8 +272,6 @@ pub struct Primitive {
     pub(in crate::scene) selection_color: [f32; 4],
     /// Whether selection visual effect (glow/highlight) is enabled.
     pub(in crate::scene) selection_effect: bool,
-    /// Extra screen pixels the selection highlight is drawn wider.
-    pub(in crate::scene) selection_widen: f32,
     /// One input-to-render sample, carried only when PERF tracing is enabled.
     pub(in crate::scene) nav_perf: Option<NavPerfSample>,
 }
@@ -4758,7 +4756,6 @@ impl Scene {
             viewcube_text_color,
             selection_color: self.selection_color,
             selection_effect: self.selection_effect,
-            selection_widen: self.selection_widen,
             nav_perf: perf_nav,
         }
     }
@@ -4791,7 +4788,6 @@ impl Scene {
                 viewcube_text_color,
                 selection_color: self.selection_color,
                 selection_effect: self.selection_effect,
-                selection_widen: self.selection_widen,
                 nav_perf: None,
             };
         };
@@ -4854,7 +4850,6 @@ impl Scene {
             viewcube_text_color,
             selection_color: self.selection_color,
             selection_effect: self.selection_effect,
-            selection_widen: self.selection_widen,
             nav_perf: perf_nav,
         }
     }

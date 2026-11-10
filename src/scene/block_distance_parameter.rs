@@ -262,6 +262,7 @@ fn dimension_normal(base: Vector3, end: Vector3) -> Vector3 {
     }
 }
 
+#[cfg(test)]
 pub(crate) fn create(
     document: &mut Document,
     definition: Handle,

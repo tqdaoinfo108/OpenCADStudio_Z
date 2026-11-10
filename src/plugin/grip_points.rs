@@ -473,11 +473,6 @@ pub(crate) fn abandon_grip_delivery(plugin_id: &str) {
 pub(crate) struct DescriptorGripDrag {
     /// The declaring plugin (the class's owner).
     pub plugin: String,
-    /// The class key the dragged instance staged under (its identity stamp).
-    pub class_id: String,
-    /// The design-record linkage: the parameter/rule rows live in this
-    /// XRecord (the record layer stays the only truth; the settle writes it).
-    pub design_record: String,
     /// The LAST GOOD design: the current truth the pump re-derives from.
     pub chain: ocs_plugin_api::host::ParametricChain,
     /// The per-move re-derivation tolerance the Begin answer declared.

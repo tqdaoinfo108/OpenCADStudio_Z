@@ -351,14 +351,6 @@ pub(crate) fn compute_grounding(
     }
 }
 
-pub(crate) fn encode_image_png(img: &image::RgbaImage) -> Result<Vec<u8>, String> {
-    use std::io::Cursor;
-    let mut buf = Cursor::new(Vec::new());
-    img.write_to(&mut buf, image::ImageFormat::Png)
-        .map_err(|e| format!("Failed to encode PNG: {e}"))?;
-    Ok(buf.into_inner())
-}
-
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct PyramidLevelInfo {
     pub level: u32,

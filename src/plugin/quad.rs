@@ -146,6 +146,7 @@ impl QuadStore {
     }
 
     /// Which plugin owns `panel_id`, if any is registered.
+    #[cfg(test)]
     pub(crate) fn owner_of(&self, panel_id: &str) -> Option<&str> {
         self.owners.get(panel_id).map(String::as_str)
     }

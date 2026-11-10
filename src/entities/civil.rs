@@ -866,16 +866,6 @@ fn point_at(run: &[Vector2], distance: f64) -> Option<(Vector2, Vector2)> {
     None
 }
 
-/// Reading angle that keeps text upright.
-fn upright(angle: f64) -> f64 {
-    let a = angle.rem_euclid(std::f64::consts::TAU);
-    if a > std::f64::consts::FRAC_PI_2 && a <= 3.0 * std::f64::consts::FRAC_PI_2 {
-        a - std::f64::consts::PI
-    } else {
-        a
-    }
-}
-
 fn label_group(data: &ArchEntityData, document: &document::Document, out: &mut Decoded) -> Option<()> {
     use property as p;
     let handles = data.decode().handles;

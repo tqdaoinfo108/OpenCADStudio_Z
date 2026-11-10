@@ -1244,7 +1244,7 @@ pub struct BlockGeometryRecords {
 /// Where the placements of one upload landed: each reference's slots, and the
 /// instance buffer of every arena they index.
 pub struct BlockTracking {
-    pub slots: Vec<(document::Handle, BlockSlot)>,
+    pub(crate) slots: Vec<(document::Handle, BlockSlot)>,
     pub buffers: Vec<wgpu::Buffer>,
     /// The block-local geometry of each group, indexed by `BlockSlot::group`.
     pub shapes: Vec<Vec<[f32; 3]>>,
@@ -1286,6 +1286,7 @@ fn group_in_first_seen_order<T: Copy>(items: Vec<((u64, bool), T)>) -> Vec<((u64
 }
 
 /// The sequential reference: one pass with a map from key to group.
+#[cfg(any(target_arch = "wasm32", test))]
 fn group_with_map<T: Copy>(items: Vec<((u64, bool), T)>) -> Vec<((u64, bool), Vec<T>)> {
     let mut slots: rustc_hash::FxHashMap<(u64, bool), usize> = rustc_hash::FxHashMap::default();
     let mut groups: Vec<((u64, bool), Vec<T>)> = Vec::new();
@@ -1859,11 +1860,10 @@ pub(crate) fn new_blocks(
     blocks
         .iter()
         .filter_map(|block| {
-            let (source_id, mesh_edge) = block_key(block, None)?;
+            let (_, mesh_edge) = block_key(block, None)?;
             let instance = block.wire.render_instance?;
             let (points, magnitude) = relative_points(block.wire);
             Some(super::analytic_slots::NewBlock {
-                source_id,
                 mesh_edge,
                 position: [
                     instance.translation[0] + block.delta[0],

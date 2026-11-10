@@ -7041,8 +7041,6 @@ mod batch5_tests {
 
     #[test]
     fn associative_array_honours_the_base_point() {
-        use document::Entity as _;
-
         let mut app = new_app();
         let before: Vec<_> = app.tabs[app.active_tab]
             .scene
@@ -7128,8 +7126,6 @@ mod batch5_tests {
 
     #[test]
     fn setbylayer_reset_is_scriptable() {
-        use document::Entity as _;
-
         let mut app = new_app();
         let reply = app.automation_op(r#"{"op":"run","cmd":"LINE 0,0 10,0"}"#);
         assert_eq!(reply["ok"], true, "{reply}");

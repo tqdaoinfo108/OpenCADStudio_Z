@@ -1027,6 +1027,10 @@ mod tests {
                 "[{}] {} | {} ({}) -> {}",
                 r.status, r.category, r.command, r.option, r.details
             );
+            println!(
+                "    input={:?}; added={}; unconsumed={:?}; error={:?}",
+                r.cmd_input, r.added_entities, r.unconsumed, r.error
+            );
             match r.status {
                 "PASS" => pass += 1,
                 "DROPPED_TOKENS" => dropped += 1,

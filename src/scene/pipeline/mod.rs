@@ -2719,7 +2719,7 @@ impl Pipeline {
 
     /// `upload_circles_from_instances`, also reporting where each instance
     /// landed in the depth-sorted buffer, paired with the reference that owns it.
-    pub fn upload_circles_tracked(
+    pub(crate) fn upload_circles_tracked(
         &mut self,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
@@ -2752,7 +2752,7 @@ impl Pipeline {
     }
 
     /// The ellipse counterpart of `upload_circles_tracked`.
-    pub fn upload_ellipses_tracked(
+    pub(crate) fn upload_ellipses_tracked(
         &mut self,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
