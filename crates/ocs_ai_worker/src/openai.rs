@@ -81,7 +81,7 @@ impl OpenAi {
             body["tool_choice"] = json!("auto");
             body["parallel_tool_calls"] = json!(false);
         }
-        for attempt in 0..4 {
+        for attempt in 0..6 {
             let response = self
                 .agent
                 .post(&self.endpoint)
@@ -90,8 +90,9 @@ impl OpenAi {
             match response {
                 Ok(mut response) => {
                     let status = response.status().as_u16();
-                    if (status == 429 || (500..600).contains(&status)) && attempt < 3 {
-                        thread::sleep(Duration::from_secs(2u64.pow(attempt)));
+                    if (status == 408 || status == 429 || (500..600).contains(&status)) && attempt < 5 {
+                        let delay = Duration::from_millis(1000 * (1 << attempt.min(4)));
+                        thread::sleep(delay);
                         continue;
                     }
                     // Error bodies can echo credentials or drawing content; never include them in job logs.
@@ -125,10 +126,11 @@ impl OpenAi {
                     );
                     return Ok(message.clone());
                 }
-                Err(_) if attempt < 3 => {
-                    thread::sleep(Duration::from_secs(2u64.pow(attempt)));
+                Err(_e) if attempt < 5 => {
+                    let delay = Duration::from_millis(1000 * (1 << attempt.min(4)));
+                    thread::sleep(delay);
                 }
-                Err(_) => bail!("OpenAI transport failed after bounded retries"),
+                Err(e) => bail!("OpenAI transport failed after retries: {e}"),
             }
         }
         bail!("OpenAI retry budget exhausted")
@@ -149,28 +151,55 @@ impl OpenAi {
         ];
         let format =
             json!({"type":"json_schema","json_schema":{"name":name,"strict":true,"schema":schema}});
-        let message = self.completion(
-            if vision {
-                &self.vision_model
-            } else {
-                &self.model
-            },
-            &messages,
-            Some(format.clone()),
-            &[],
-        )?;
-        let text = message["content"]
-            .as_str()
-            .context("OpenAI structured response has no text")?;
-        let value: Value =
-            serde_json::from_str(text).context("OpenAI did not return valid structured JSON")?;
-        let validator = jsonschema::validator_for(&format["json_schema"]["schema"])
-            .context("invalid local JSON schema")?;
-        ensure!(
-            validator.is_valid(&value),
-            "OpenAI response did not satisfy the requested JSON schema"
-        );
-        serde_json::from_value(value).context("decode OpenAI structured output")
+        let mut last_err = None;
+        for attempt in 0..4 {
+            let message = match self.completion(
+                if vision {
+                    &self.vision_model
+                } else {
+                    &self.model
+                },
+                &messages,
+                Some(format.clone()),
+                &[],
+            ) {
+                Ok(m) => m,
+                Err(e) => {
+                    last_err = Some(e);
+                    thread::sleep(Duration::from_millis(500 * (1 << attempt.min(3))));
+                    continue;
+                }
+            };
+            let text = match message["content"].as_str() {
+                Some(t) => t,
+                None => {
+                    last_err = Some(anyhow::anyhow!("OpenAI response has no text content"));
+                    continue;
+                }
+            };
+            let value: Value = match serde_json::from_str(text) {
+                Ok(v) => v,
+                Err(e) => {
+                    last_err = Some(anyhow::anyhow!("OpenAI did not return valid structured JSON: {e}"));
+                    continue;
+                }
+            };
+            let validator = match jsonschema::validator_for(&format["json_schema"]["schema"]) {
+                Ok(val) => val,
+                Err(e) => return Err(anyhow::anyhow!("invalid local JSON schema: {e}")),
+            };
+            if !validator.is_valid(&value) {
+                last_err = Some(anyhow::anyhow!("OpenAI response did not satisfy the requested JSON schema"));
+                continue;
+            }
+            match serde_json::from_value(value) {
+                Ok(parsed) => return Ok(parsed),
+                Err(e) => {
+                    last_err = Some(anyhow::anyhow!("decode OpenAI structured output: {e}"));
+                }
+            }
+        }
+        Err(last_err.unwrap_or_else(|| anyhow::anyhow!("OpenAI structured completion failed after retries")))
     }
 }
 

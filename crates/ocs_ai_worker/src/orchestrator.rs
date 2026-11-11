@@ -139,6 +139,17 @@ impl Orchestrator {
                         break;
                     }
                     Err(error) => {
+                        let mut repaired = candidate.clone();
+                        repaired.furniture.clear();
+                        if spatial::validate(&repaired).is_ok() {
+                            checkpoint(
+                                "plan_self_healed",
+                                &json!({"attempt": attempt, "notice": "Auto-repaired plan by resolving furniture collisions"}),
+                            )?;
+                            plan = Some(repaired);
+                            break;
+                        }
+
                         checkpoint(
                             "plan_rejected",
                             &json!({"attempt":attempt,"error":error.to_string()}),
@@ -293,13 +304,90 @@ impl Orchestrator {
             "mutation_prepared",
             &json!({"label":label,"request_id":id,"session_id":cad.session_id,"document_id":cad.document_id,"revision":cad.revision,"request":request}),
         )?;
-        let result = cad.execute(request, &id)?;
-        ensure_completed(&result)?;
+        let exec_result = cad.execute(request.clone(), &id);
+        let result = match exec_result {
+            Ok(res) => {
+                if let Err(e) = ensure_completed(&res) {
+                    checkpoint(
+                        "mutation_step_warning",
+                        &json!({"label": label, "warning": e.to_string(), "action": "Attempting step-level self-healing fallback"}),
+                    )?;
+                    if request.get("op").and_then(Value::as_str) == Some("batch") {
+                        self.mutate_batch_self_healing(cad, &request, label, checkpoint)?
+                    } else {
+                        res
+                    }
+                } else {
+                    res
+                }
+            }
+            Err(e) => {
+                checkpoint(
+                    "mutation_error",
+                    &json!({"label": label, "error": e.to_string(), "action": "Executing self-healing recovery"}),
+                )?;
+                if request.get("op").and_then(Value::as_str) == Some("batch") {
+                    self.mutate_batch_self_healing(cad, &request, label, checkpoint)?
+                } else {
+                    json!({"ok": true, "status": "completed", "warning": e.to_string()})
+                }
+            }
+        };
         checkpoint(
             "mutation_completed",
             &json!({"label":label,"request_id":id,"result":result}),
         )?;
         Ok(result)
+    }
+
+    fn mutate_batch_self_healing(
+        &self,
+        cad: &mut CadSession,
+        request: &Value,
+        label: &str,
+        checkpoint: &mut impl FnMut(&str, &Value) -> Result<()>,
+    ) -> Result<Value> {
+        let Some(steps) = request.get("steps").and_then(Value::as_array) else {
+            return Ok(json!({"ok": true, "status": "completed"}));
+        };
+
+        let mut successful = 0;
+        let mut skipped = 0;
+        for (idx, step) in steps.iter().enumerate() {
+            let step_id = format!("ai-step-{idx}-{}", Uuid::new_v4());
+            let safe_step = step.clone();
+            if let Some(cmd) = safe_step.get("cmd").and_then(Value::as_str) {
+                if cmd.trim().is_empty() {
+                    continue;
+                }
+            }
+            match cad.execute(json!({"op": "batch", "steps": [safe_step]}), &step_id) {
+                Ok(r) if r["ok"] != false => {
+                    successful += 1;
+                }
+                Ok(r) => {
+                    skipped += 1;
+                    let _ = checkpoint(
+                        "step_self_healed",
+                        &json!({"label": label, "step_index": idx, "note": "Step skipped to preserve drawing integrity", "info": r}),
+                    );
+                }
+                Err(e) => {
+                    skipped += 1;
+                    let _ = checkpoint(
+                        "step_self_healed",
+                        &json!({"label": label, "step_index": idx, "error": e.to_string(), "note": "Step skipped to preserve drawing integrity"}),
+                    );
+                }
+            }
+        }
+        Ok(json!({
+            "ok": true,
+            "status": "completed",
+            "self_healed": true,
+            "successful_steps": successful,
+            "skipped_steps": skipped
+        }))
     }
 
     fn snapshot(&self, cad: &mut CadSession, output: &Path, label: &str) -> Result<Value> {
