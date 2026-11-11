@@ -14,20 +14,101 @@ impl OpenCADStudio {
                 self.ai_copilot.input_prompt = val;
                 Task::none()
             }
+            AiCopilotMsg::TextEditorAction(action) => {
+                match &action {
+                    iced::widget::text_editor::Action::Edit(iced::widget::text_editor::Edit::Enter) => {
+                        if self.shift_down {
+                            // Shift + Enter: Insert newline in textarea
+                            self.ai_copilot.input_content.perform(action);
+                            self.ai_copilot.input_prompt = self.ai_copilot.input_content.text();
+                        } else {
+                            // Enter alone: Submit message
+                            return self.update_ai_copilot(AiCopilotMsg::SendMessage);
+                        }
+                    }
+                    _ => {
+                        self.ai_copilot.input_content.perform(action);
+                        self.ai_copilot.input_prompt = self.ai_copilot.input_content.text();
+                    }
+                }
+                Task::none()
+            }
+            AiCopilotMsg::PasteClipboard => {
+                match crate::ai::multimodal::MultimodalAttachmentManager::inspect_clipboard_paste() {
+                    crate::ai::multimodal::ClipboardPasteOutcome::Image(img) => {
+                        self.ai_copilot.attached_images.push(img);
+                    }
+                    crate::ai::multimodal::ClipboardPasteOutcome::CopiedFiles(paths) => {
+                        for p in paths {
+                            if let Ok(att) = crate::ai::multimodal::MultimodalAttachmentManager::parse_file(&p) {
+                                match att {
+                                    crate::ai::multimodal::DroppedAttachment::Image(img) => {
+                                        self.ai_copilot.attached_images.push(img);
+                                    }
+                                    crate::ai::multimodal::DroppedAttachment::File(f) => {
+                                        self.ai_copilot.attached_files.push(f);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    crate::ai::multimodal::ClipboardPasteOutcome::Text(txt) => {
+                        self.ai_copilot.input_content.perform(iced::widget::text_editor::Action::Edit(
+                            iced::widget::text_editor::Edit::Paste(std::sync::Arc::new(txt)),
+                        ));
+                        self.ai_copilot.input_prompt = self.ai_copilot.input_content.text();
+                    }
+                    crate::ai::multimodal::ClipboardPasteOutcome::Empty => {}
+                }
+                Task::none()
+            }
+            AiCopilotMsg::RemoveAttachedImage(idx) => {
+                if idx < self.ai_copilot.attached_images.len() {
+                    self.ai_copilot.attached_images.remove(idx);
+                }
+                Task::none()
+            }
+            AiCopilotMsg::FileDropped(path) => {
+                self.ai_copilot.is_drag_hovered = false;
+                if let Ok(att) = crate::ai::multimodal::MultimodalAttachmentManager::parse_file(&path) {
+                    match att {
+                        crate::ai::multimodal::DroppedAttachment::Image(img) => {
+                            self.ai_copilot.attached_images.push(img);
+                        }
+                        crate::ai::multimodal::DroppedAttachment::File(f) => {
+                            self.ai_copilot.attached_files.push(f);
+                        }
+                    }
+                }
+                Task::none()
+            }
+            AiCopilotMsg::DragHover(hovered) => {
+                self.ai_copilot.is_drag_hovered = hovered;
+                Task::none()
+            }
             AiCopilotMsg::SendMessage => {
-                let prompt = self.ai_copilot.input_prompt.trim().to_string();
-                if prompt.is_empty() && self.ai_copilot.attached_files.is_empty() {
+                let prompt = self.ai_copilot.current_prompt().trim().to_string();
+                if prompt.is_empty()
+                    && self.ai_copilot.attached_files.is_empty()
+                    && self.ai_copilot.attached_images.is_empty()
+                {
                     return Task::none();
+                }
+
+                let mut text_display = if prompt.is_empty() {
+                    "Xử lý các tệp đính kèm theo quy hoạch kiến trúc chuẩn.".to_string()
+                } else {
+                    prompt.clone()
+                };
+
+                if !self.ai_copilot.attached_images.is_empty() {
+                    text_display.push_str(&format!(" [📷 {} ảnh đính kèm]", self.ai_copilot.attached_images.len()));
                 }
 
                 self.ai_copilot.messages.push(ChatMessage {
                     id: format!("user-{}", self.ai_copilot.messages.len()),
                     role: MessageRole::User,
-                    text: if prompt.is_empty() {
-                        "Xử lý các tệp đính kèm theo quy hoạch kiến trúc chuẩn.".to_string()
-                    } else {
-                        prompt.clone()
-                    },
+                    text: text_display,
                     timestamp: "Vừa xong".to_string(),
                     interactive_handles: Vec::new(),
                     interactive_coords: Vec::new(),
@@ -36,7 +117,7 @@ impl OpenCADStudio {
                     can_evolve: false,
                 });
 
-                self.ai_copilot.input_prompt.clear();
+                self.ai_copilot.clear_prompt();
                 self.ai_copilot.is_busy = true;
 
                 // Capture live selection from active tab
@@ -61,6 +142,7 @@ impl OpenCADStudio {
                 let stop_flag = copilot_bridge::launch_copilot_task(
                     prompt,
                     self.ai_copilot.attached_files.clone(),
+                    self.ai_copilot.attached_images.clone(),
                     handles,
                     context_summary,
                     self.ai_config.clone(),

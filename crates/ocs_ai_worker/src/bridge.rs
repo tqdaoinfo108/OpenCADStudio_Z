@@ -51,7 +51,9 @@ wire_enum!(ReadOp {
     History => "history", Commands => "commands", Events => "events", Operation => "operation",
     BatchResult => "batch_result", Guide => "guide", EntitySchema => "entity_schema",
     Validate => "validate", XdataGet => "xdata_get", Audit => "audit",
-    TextSearch => "text_search", TextAudit => "text_audit", Keytips => "keytips", Capture => "capture"
+    TextSearch => "text_search", TextAudit => "text_audit", Keytips => "keytips", Capture => "capture",
+    SpatialQuery => "spatial_query", FindEnclosedRooms => "find_enclosed_rooms",
+    TopologySummary => "topology_summary", FindClashes => "find_clashes", QueryByRegion => "query_by_region"
 });
 wire_enum!(ExecuteOp {
     New => "new", Open => "open", Activate => "activate", SwitchDocument => "switch_document",
@@ -66,7 +68,10 @@ wire_enum!(ExecuteOp {
     SelectionSetSave => "selection_set_save", SelectionSetLoad => "selection_set_load",
     UserSelect => "user_select", Getpoint => "getpoint", Close => "close", Sysvar => "sysvar",
     LayoutCreate => "layout_create", PageSetupSet => "page_setup_set", FileIdentity => "file_identity",
-    Save => "save", SaveVerified => "save_verified", Stop => "stop", Batch => "batch"
+    Save => "save", SaveVerified => "save_verified", Stop => "stop", Batch => "batch",
+    SmartMacro => "smart_macro", DrawStructuralGrid => "draw_structural_grid",
+    DrawWallNetwork => "draw_wall_network", PlaceOpeningOnWall => "place_opening_on_wall",
+    GenerateStaircase => "generate_staircase", AutoDimensionAndLabel => "auto_dimension_and_label"
 });
 #[derive(Debug)]
 struct RpcFailure {
@@ -1188,7 +1193,7 @@ mod tests {
             .collect();
         assert_eq!(reads, constant_names(source, "READ_OPS"));
         assert_eq!(executes, constant_names(source, "EXECUTE_OPS"));
-        assert_eq!(executes.len(), 44);
+        assert_eq!(executes.len(), 50);
     }
     #[test]
     fn all_twenty_tools_match_actual_intents_and_facades() {

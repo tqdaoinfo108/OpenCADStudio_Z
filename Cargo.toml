@@ -129,6 +129,7 @@ i18n-embed = { version = "0.16", features = ["desktop-requester"] }
 rayon = "1"
 open = "5"
 ureq = { version = "3", default-features = false, features = ["rustls", "platform-verifier", "win-system-proxy"] }
+arboard = "3.6"
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 ocs_plugin_api = { path = "crates/ocs_plugin_api" }

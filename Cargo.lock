@@ -9,6 +9,7 @@ dependencies = [
  "aes",
  "allsorts",
  "anyhow",
+ "arboard",
  "ashpd",
  "base64",
  "bincode",

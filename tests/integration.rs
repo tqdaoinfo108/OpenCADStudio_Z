@@ -83,3 +83,9 @@ mod zoom_extents_xline;
 
 #[path = "copilot_multimodal_tests.rs"]
 mod copilot_multimodal_tests;
+
+#[path = "smart_mcp_tests.rs"]
+mod smart_mcp_tests;
+
+#[path = "brownfield_and_multimodal_e2e_tests.rs"]
+mod brownfield_and_multimodal_e2e_tests;

@@ -1794,6 +1794,17 @@ impl OpenCADStudio {
                     .extension()
                     .map(|e| e.to_string_lossy().to_lowercase())
                     .unwrap_or_default();
+                if matches!(ext.as_str(), "xlsx" | "xls" | "csv")
+                    || (self.show_ai_copilot
+                        && matches!(
+                            ext.as_str(),
+                            "png" | "jpg" | "jpeg" | "webp" | "bmp" | "dwg" | "dxf"
+                        ))
+                {
+                    return self.update(Message::AiCopilot(
+                        crate::ai::chat_panel::AiCopilotMsg::FileDropped(path),
+                    ));
+                }
                 if ext == "scr" {
                     return self.dispatch_command(&format!("SCRIPT \"{}\"", path.display()));
                 }

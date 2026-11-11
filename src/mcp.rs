@@ -92,6 +92,11 @@ const READ_OPS: &[&str] = &[
     "text_audit",
     "keytips",
     "capture",
+    "spatial_query",
+    "find_clashes",
+    "find_enclosed_rooms",
+    "query_by_region",
+    "topology_summary",
 ];
 const EXECUTE_OPS: &[&str] = &[
     "new",
@@ -138,6 +143,12 @@ const EXECUTE_OPS: &[&str] = &[
     "save_verified",
     "stop",
     "batch",
+    "smart_macro",
+    "draw_structural_grid",
+    "draw_wall_network",
+    "place_opening_on_wall",
+    "generate_staircase",
+    "auto_dimension_and_label",
 ];
 const MAX_BATCH_STEPS: usize = 64;
 const FACADE_TOOL_NAMES: &[&str] = &["ocs_sessions", "ocs_read", "ocs_execute", "ocs_capture"];
@@ -1333,6 +1344,21 @@ impl GuiClient {
                 ] {
                     step.remove(key);
                 }
+                // Pre-execution geometry validation and command sanitization
+                if step.get("op").and_then(Value::as_str) == Some("entities_create") {
+                    if let Some(ents) = step.get_mut("entities").and_then(Value::as_array_mut) {
+                        for ent in ents.iter_mut() {
+                            let _ = crate::ai::mcp_resilience::CommandSanitizer::validate_entity_geometry(ent);
+                        }
+                    }
+                }
+                if step.get("op").and_then(Value::as_str) == Some("run") {
+                    if let Some(cmd) = step.get("cmd").and_then(Value::as_str) {
+                        if let Some(sanitized) = crate::ai::mcp_resilience::CommandSanitizer::sanitize_command(cmd) {
+                            step.insert("cmd".into(), Value::String(sanitized));
+                        }
+                    }
+                }
                 step.insert("request_id".into(), Value::String(step_id.clone()));
                 self.request(
                     Value::Object(step),
@@ -1406,15 +1432,42 @@ impl GuiClient {
             if response["ok"].as_bool() == Some(false)
                 || matches!(response["status"].as_str(), Some("failed" | "cancelled"))
             {
-                let result = batch_result(
-                    &batch,
-                    response["status"].as_str().unwrap_or("failed"),
-                    false,
-                );
-                batch.terminal = Some(result.clone());
-                self.batches.push_back(batch);
-                trim_batches(&mut self.batches);
-                return Ok(result);
+                let continue_on_error = batch
+                    .request
+                    .get("continue_on_recoverable_error")
+                    .and_then(Value::as_bool)
+                    .unwrap_or(true);
+                let atomic_rollback = batch
+                    .request
+                    .get("atomic_rollback")
+                    .and_then(Value::as_bool)
+                    .unwrap_or(false);
+
+                if atomic_rollback {
+                    // Roll back all completed steps up to this point
+                    for _ in 0..batch.next {
+                        let _ = self.request(json!({"op": "undo"}), 5.0, pump, mcp_id);
+                    }
+                    let mut result = batch_result(&batch, "rolled_back", false);
+                    result["error"] = json!("Atomic rollback triggered: batch aborted and completed steps undone.");
+                    batch.terminal = Some(result.clone());
+                    self.batches.push_back(batch);
+                    trim_batches(&mut self.batches);
+                    return Ok(result);
+                } else if continue_on_error {
+                    // Recoverable error: record and continue remaining steps
+                    continue;
+                } else {
+                    let result = batch_result(
+                        &batch,
+                        response["status"].as_str().unwrap_or("failed"),
+                        false,
+                    );
+                    batch.terminal = Some(result.clone());
+                    self.batches.push_back(batch);
+                    trim_batches(&mut self.batches);
+                    return Ok(result);
+                }
             }
             if response["status"] == "waiting_input"
                 && batch
@@ -2156,6 +2209,61 @@ fn call_tool(
                     "instructions": INSTRUCTIONS
                 }));
             }
+            if matches!(op, "spatial_query" | "find_clashes" | "find_enclosed_rooms" | "query_by_region" | "topology_summary") {
+                let ent_resp = client(clients, session_id)?.request(json!({"op": "entities"}), 30.0, pump, mcp_id)?;
+                let empty_vec = Vec::new();
+                let entities = ent_resp.get("entities").and_then(Value::as_array).unwrap_or(&empty_vec);
+
+                match op {
+                    "find_clashes" => {
+                        let clashes = crate::ai::spatial_query::SpatialQueryEngine::find_clashes(entities);
+                        return Ok(json!({
+                            "ok": true,
+                            "status": "completed",
+                            "clashes_count": clashes.len(),
+                            "clashes": clashes
+                        }));
+                    }
+                    "find_enclosed_rooms" => {
+                        let rooms = crate::ai::spatial_query::SpatialQueryEngine::find_enclosed_rooms(entities);
+                        return Ok(json!({
+                            "ok": true,
+                            "status": "completed",
+                            "rooms_count": rooms.len(),
+                            "rooms": rooms
+                        }));
+                    }
+                    "query_by_region" => {
+                        let params = &arguments["parameters"];
+                        let bounds = params.get("bounds").and_then(Value::as_array).map(|arr| {
+                            [
+                                arr.get(0).and_then(Value::as_f64).unwrap_or(0.0),
+                                arr.get(1).and_then(Value::as_f64).unwrap_or(0.0),
+                                arr.get(2).and_then(Value::as_f64).unwrap_or(0.0),
+                                arr.get(3).and_then(Value::as_f64).unwrap_or(0.0),
+                            ]
+                        }).unwrap_or([0.0, 0.0, 0.0, 0.0]);
+                        let filtered = crate::ai::spatial_query::SpatialQueryEngine::query_by_region(entities, bounds);
+                        return Ok(json!({
+                            "ok": true,
+                            "status": "completed",
+                            "count": filtered.len(),
+                            "entities": filtered
+                        }));
+                    }
+                    "topology_summary" | "spatial_query" => {
+                        let digest = crate::ai::topology_summarizer::SemanticTopologySummarizer::summarize(entities);
+                        let summary_md = digest.to_llm_summary();
+                        return Ok(json!({
+                            "ok": true,
+                            "status": "completed",
+                            "digest": digest,
+                            "summary_markdown": summary_md
+                        }));
+                    }
+                    _ => {}
+                }
+            }
             let mut request = arguments["parameters"]
                 .as_object()
                 .cloned()
@@ -2183,6 +2291,31 @@ fn call_tool(
             let request_id = required_string(&request, "request_id")?;
             if request_id.len() > 128 {
                 return Err("request_id must not exceed 128 bytes".to_string().into());
+            }
+
+            // Smart Macro Operations
+            if matches!(op, "smart_macro" | "draw_structural_grid" | "draw_wall_network" | "place_opening_on_wall" | "generate_staircase" | "auto_dimension_and_label") {
+                let macro_name = if op == "smart_macro" {
+                    request.get("name").and_then(Value::as_str).unwrap_or("")
+                } else {
+                    op
+                };
+                let params = request.get("parameters").unwrap_or(&request);
+                let macro_entities = crate::ai::smart_macro::SmartMacro::dispatch(macro_name, params)
+                    .map_err(|e| CallError::Tool(format!("Smart macro error: {e}")))?;
+
+                let wait = arguments["wait_seconds"].as_f64().unwrap_or(30.0);
+                let gui = client(clients, session_id)?;
+                let create_req = json!({
+                    "op": "entities_create",
+                    "request_id": request_id,
+                    "entities": macro_entities
+                });
+                let mut create_resp = gui.request(create_req, wait, pump, mcp_id)?;
+                if let Some(obj) = create_resp.as_object_mut() {
+                    obj.insert("smart_macro".into(), json!(macro_name));
+                }
+                return Ok(create_resp);
             }
             let val_res = validate_execute_request(&request, op)?;
             let is_batch = op == "batch";

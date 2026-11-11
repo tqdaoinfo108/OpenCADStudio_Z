@@ -29,6 +29,7 @@ use uuid::Uuid;
 pub fn launch_copilot_task(
     user_prompt: String,
     attached_files: Vec<AttachedFile>,
+    attached_images: Vec<crate::ai::multimodal::AttachedImage>,
     selected_handles: Vec<String>,
     selected_context: Option<String>,
     ai_config: AiConfig,
@@ -42,6 +43,7 @@ pub fn launch_copilot_task(
         if let Err(e) = run_copilot_worker(
             user_prompt,
             attached_files,
+            attached_images,
             selected_handles,
             selected_context,
             ai_config,
@@ -65,6 +67,7 @@ pub fn launch_copilot_task(
 fn run_copilot_worker(
     user_prompt: String,
     attached_files: Vec<AttachedFile>,
+    attached_images: Vec<crate::ai::multimodal::AttachedImage>,
     selected_handles: Vec<String>,
     selected_context: Option<String>,
     ai_config: AiConfig,
@@ -75,6 +78,15 @@ fn run_copilot_worker(
     // 1. Multimodal ingestion: compile user prompt with ingested Excel & DWG data
     let mut prompt_sections = Vec::new();
     prompt_sections.push(user_prompt);
+
+    if !attached_images.is_empty() {
+        let names: Vec<&str> = attached_images.iter().map(|i| i.name.as_str()).collect();
+        prompt_sections.push(format!(
+            "[MULTIMODAL ATTACHED IMAGES: {} ảnh chụp mặt bằng/bản vẽ phác thảo ({})]",
+            attached_images.len(),
+            names.join(", ")
+        ));
+    }
 
     for file in &attached_files {
         match file.file_type {

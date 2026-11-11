@@ -614,7 +614,7 @@ impl OpenCADStudio {
             "document_id":tab.id,"revision":tab.edit_revision,"geometry_revision":tab.scene.geometry_epoch,"camera_revision":tab.scene.camera_generation,
             "hand_seed":format!("{:X}",tab.scene.document.header.handle_seed.max(tab.scene.document.next_handle())),
             "plugins":plugin_ids(),
-            "documents":self.tabs.iter().map(|t|json!({"id":t.id,"title":t.tab_title,"path":t.current_path,"dirty":t.dirty,"revision":t.edit_revision,"start":t.is_start})).collect::<Vec<_>>(),
+            "documents":self.tabs.iter().map(|t|json!({"id":t.id,"title":t.tab_title,"path":t.current_path,"dirty":t.dirty,"revision":t.edit_revision,"start":t.is_start,"active":t.id==tab.id,"entity_count":t.scene.document.entities().count()})).collect::<Vec<_>>(),
             "selection":tab.scene.selected_handles_in_order().iter().map(|h|format!("{:X}",h.value())).collect::<Vec<_>>(),
             "selection_revision":self.control.selection_revision,
             "command":command,"command_owner_client_id":self.control.owner.as_ref().filter(|(owner_tab,_)|*owner_tab==tab.id).map(|(_,owner)|owner.clone()),"modal":self.active_modal.as_ref().map(|m|format!("{m:?}")),
@@ -954,7 +954,7 @@ impl OpenCADStudio {
             );
         }
         let tab = &self.tabs[self.active_tab];
-        if req["revision"]
+        let has_rev_mismatch = req["revision"]
             .as_u64()
             .is_some_and(|v| v != tab.edit_revision)
             || req["geometry_revision"]
@@ -962,12 +962,24 @@ impl OpenCADStudio {
                 .is_some_and(|v| v != tab.scene.geometry_epoch)
             || req["camera_revision"]
                 .as_u64()
-                .is_some_and(|v| v != tab.scene.camera_generation)
-        {
-            return (
-                json!({"ok":false,"status":"failed","code":"stale_state","error":"Nothing ran. Read state (ocs_read op state) and retry, omitting revision or using state.revision","state":self.control_state()}),
-                Task::none(),
-            );
+                .is_some_and(|v| v != tab.scene.camera_generation);
+
+        if has_rev_mismatch {
+            let auto_rebase = req["auto_rebase"].as_bool().unwrap_or(true);
+            let active_sel: Vec<String> = tab
+                .scene
+                .selected
+                .iter()
+                .map(|h| format!("{:X}", h.value()))
+                .collect();
+            if auto_rebase && crate::ai::mcp_resilience::ConcurrencyRebase::can_auto_rebase(&req, &active_sel) {
+                // Non-conflicting mutation auto-rebased to active tab revision
+            } else {
+                return (
+                    json!({"ok":false,"status":"failed","code":"stale_state","error":"Nothing ran. Read state (ocs_read op state) and retry, omitting revision or using state.revision","state":self.control_state()}),
+                    Task::none(),
+                );
+            }
         }
         if query {
             let response = match op {

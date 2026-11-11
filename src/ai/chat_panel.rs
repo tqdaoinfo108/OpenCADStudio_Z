@@ -7,7 +7,7 @@ use crate::ai::{
 use crate::app::config::AiConfig;
 use crate::app::Message;
 use iced::widget::{
-    button, column, container, row, scrollable, text, text_input, Space,
+    button, column, container, image, row, scrollable, text, text_editor, text_input, Space,
 };
 use iced::{Alignment, Background, Border, Color, Element, Fill, Length, Theme};
 
@@ -15,6 +15,11 @@ use iced::{Alignment, Background, Border, Color, Element, Fill, Length, Theme};
 #[derive(Debug, Clone)]
 pub enum AiCopilotMsg {
     InputChanged(String),
+    TextEditorAction(iced::widget::text_editor::Action),
+    PasteClipboard,
+    RemoveAttachedImage(usize),
+    FileDropped(std::path::PathBuf),
+    DragHover(bool),
     SendMessage,
     StopProcessing,
     AttachFiles,
@@ -85,7 +90,68 @@ pub fn view_copilot_panel<'a>(
         root = root.push(sel_banner);
     }
 
-    // 6. Attached Files Row (Chips)
+    // 6. Dropzone Overlay (when dragging files over the window)
+    if state.is_drag_hovered {
+        let dropzone_banner = container(
+            row![
+                text("📥").size(16),
+                text("Thả tệp vào đây (.xlsx, .dwg, .dxf, ảnh PNG/JPG) để đính kèm!")
+                    .size(11)
+                    .color(Color::from_rgb(0.2, 0.9, 0.5)),
+            ]
+            .spacing(6)
+            .align_y(Alignment::Center),
+        )
+        .padding(8)
+        .width(Fill)
+        .style(|_theme: &Theme| container::Style {
+            background: Some(Background::Color(Color::from_rgba(0.1, 0.35, 0.2, 0.85))),
+            border: Border {
+                color: Color::from_rgb(0.3, 0.95, 0.5),
+                width: 1.5,
+                radius: 4.0.into(),
+            },
+            ..Default::default()
+        });
+        root = root.push(dropzone_banner);
+    }
+
+    // 7. Attached Images Row (Thumbnails Preview)
+    if !state.attached_images.is_empty() {
+        let mut imgs_row = row![].spacing(6).align_y(Alignment::Center);
+        for (idx, img) in state.attached_images.iter().enumerate() {
+            let handle = iced::widget::image::Handle::from_bytes(img.bytes.clone());
+            let img_widget = image(handle)
+                .width(Length::Fixed(48.0))
+                .height(Length::Fixed(48.0));
+
+            let info_col = column![
+                text(&img.name).size(10).width(Length::Fixed(70.0)),
+                text(format!("{}x{}", img.width, img.height)).size(9).color(Color::from_rgb(0.6, 0.7, 0.8)),
+                button(text("✕ Gỡ").size(9))
+                    .on_press(Message::AiCopilot(AiCopilotMsg::RemoveAttachedImage(idx)))
+                    .padding([1, 4]),
+            ]
+            .spacing(2);
+
+            let thumb_box = container(row![img_widget, info_col].spacing(4).align_y(Alignment::Center))
+                .padding(4)
+                .style(|_theme: &Theme| container::Style {
+                    background: Some(Background::Color(Color::from_rgba(0.18, 0.23, 0.3, 0.8))),
+                    border: Border {
+                        color: Color::from_rgb(0.25, 0.55, 0.85),
+                        width: 1.0,
+                        radius: 4.0.into(),
+                    },
+                    ..Default::default()
+                });
+
+            imgs_row = imgs_row.push(thumb_box);
+        }
+        root = root.push(scrollable(imgs_row).direction(scrollable::Direction::Horizontal(scrollable::Scrollbar::default())));
+    }
+
+    // 8. Attached Files Row (Chips)
     if !state.attached_files.is_empty() {
         let mut files_col = column![].spacing(4);
         for (idx, file) in state.attached_files.iter().enumerate() {
@@ -144,7 +210,7 @@ pub fn view_copilot_panel<'a>(
         root = root.push(files_col);
     }
 
-    // 7. Multimodal Input Bar
+    // 9. Multimodal Input Bar (Multi-line Textarea with IME & Shortcuts)
     let input_bar = render_input_bar(state);
     root = root.push(input_bar);
 
@@ -401,21 +467,45 @@ fn render_message_history<'a>(messages: &'a [ChatMessage]) -> Element<'a, Messag
 }
 
 fn render_input_bar<'a>(state: &'a CopilotState) -> Element<'a, Message> {
-    let text_inp = text_input("Nhập prompt hoặc kéo-thả tệp .xlsx/.dwg...", &state.input_prompt)
-        .on_input(|s| Message::AiCopilot(AiCopilotMsg::InputChanged(s)))
-        .on_submit(Message::AiCopilot(AiCopilotMsg::SendMessage))
-        .padding(8)
-        .size(12)
-        .width(Fill);
+    let line_count = state.input_content.line_count().max(1);
+    let auto_height = (line_count as f32 * 18.0 + 20.0).clamp(66.0, 195.0);
 
-    let attach_btn = button(text("📎 Đính kèm").size(12))
+    let editor = text_editor(&state.input_content)
+        .on_action(|action| Message::AiCopilot(AiCopilotMsg::TextEditorAction(action)))
+        .placeholder("Nhập prompt thiết kế... (Shift+Enter: xuống dòng • Enter: gửi • Ctrl+V: dán ảnh)")
+        .size(12)
+        .padding([6, 8])
+        .height(Length::Fixed(auto_height))
+        .style(|_theme: &Theme, status| {
+            let border_color = match status {
+                text_editor::Status::Focused { .. } => Color::from_rgb(0.2, 0.65, 1.0),
+                _ => Color::from_rgba(0.3, 0.4, 0.5, 0.45),
+            };
+            text_editor::Style {
+                background: Background::Color(Color::from_rgb(0.14, 0.17, 0.22)),
+                border: Border {
+                    color: border_color,
+                    width: 1.0,
+                    radius: 4.0.into(),
+                },
+                placeholder: Color::from_rgb(0.5, 0.56, 0.64),
+                value: Color::WHITE,
+                selection: Color::from_rgba(0.2, 0.5, 0.8, 0.5),
+            }
+        });
+
+    let attach_btn = button(text("📎 Tệp").size(11))
         .on_press(Message::AiCopilot(AiCopilotMsg::AttachFiles))
-        .padding([6, 8]);
+        .padding([4, 6]);
+
+    let paste_img_btn = button(text("📷 Dán ảnh").size(11))
+        .on_press(Message::AiCopilot(AiCopilotMsg::PasteClipboard))
+        .padding([4, 6]);
 
     let send_btn = if state.is_busy {
-        button(text("⏹ Dừng").size(12))
+        button(text("⏹ Dừng").size(11))
             .on_press(Message::AiCopilot(AiCopilotMsg::StopProcessing))
-            .padding([6, 12])
+            .padding([4, 10])
             .style(|_theme: &Theme, btn_status| {
                 let bg = match btn_status {
                     button::Status::Hovered => Color::from_rgb(0.9, 0.25, 0.25),
@@ -433,20 +523,28 @@ fn render_input_bar<'a>(state: &'a CopilotState) -> Element<'a, Message> {
                 }
             })
     } else {
-        button(text("Gửi ▶").size(12))
+        button(text("Gửi ▶").size(11))
             .on_press(Message::AiCopilot(AiCopilotMsg::SendMessage))
-            .padding([6, 12])
+            .padding([4, 10])
     };
 
-    let bar = row![
+    let toolbar_row = row![
         attach_btn,
-        text_inp,
+        paste_img_btn,
+        Space::new().width(Fill),
+        text("Shift+Enter: ↵ | Enter: ✈").size(10).color(Color::from_rgb(0.5, 0.55, 0.6)),
         send_btn,
     ]
     .spacing(6)
     .align_y(Alignment::Center);
 
-    container(bar)
+    let input_col = column![
+        editor,
+        toolbar_row,
+    ]
+    .spacing(4);
+
+    container(input_col)
         .padding(4)
         .into()
 }

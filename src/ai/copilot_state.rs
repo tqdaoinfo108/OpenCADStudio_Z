@@ -127,9 +127,12 @@ pub enum CopilotEvent {
 pub struct CopilotState {
     pub messages: Vec<ChatMessage>,
     pub attached_files: Vec<AttachedFile>,
+    pub attached_images: Vec<crate::ai::multimodal::AttachedImage>,
     pub status: AgentExecutionStatus,
+    pub input_content: iced::widget::text_editor::Content,
     pub input_prompt: String,
     pub is_busy: bool,
+    pub is_drag_hovered: bool,
     pub selected_context_summary: Option<String>,
     pub selected_handles: Vec<String>,
     pub quick_settings_open: bool,
@@ -144,7 +147,7 @@ impl Default for CopilotState {
                 ChatMessage {
                     id: "welcome".to_string(),
                     role: MessageRole::System,
-                    text: "Xin chào! Tôi là OpenCADStudio AI Copilot đa phương thức. Bạn có thể nhập yêu cầu thiết kế văn bản, hoặc đính kèm/kéo-thả tệp .dwg/.dxf và bảng tính Excel (.xlsx) để tôi tự động đọc hiểu thông số, dựng hình 2D/3D và xuất hồ sơ bản vẽ trực tiếp trên màn hình.".to_string(),
+                    text: "Xin chào! Tôi là OpenCADStudio AI Copilot đa phương thức. Bạn có thể nhập yêu cầu thiết kế văn bản, hoặc đính kèm/kéo-thả tệp .dwg/.dxf, bảng tính Excel (.xlsx) và dán ảnh mặt bằng/sketch (Ctrl+V) để tôi tự động đọc hiểu thông số, dựng hình 2D/3D và chỉnh sửa trực tiếp trên bản vẽ.".to_string(),
                     timestamp: "Vừa xong".to_string(),
                     interactive_handles: Vec::new(),
                     interactive_coords: Vec::new(),
@@ -154,9 +157,12 @@ impl Default for CopilotState {
                 }
             ],
             attached_files: Vec::new(),
+            attached_images: Vec::new(),
             status: AgentExecutionStatus::default(),
+            input_content: iced::widget::text_editor::Content::new(),
             input_prompt: String::new(),
             is_busy: false,
+            is_drag_hovered: false,
             selected_context_summary: None,
             selected_handles: Vec::new(),
             quick_settings_open: false,
@@ -167,6 +173,21 @@ impl Default for CopilotState {
 }
 
 impl CopilotState {
+    /// Returns the current prompt string from the multi-line editor or input prompt.
+    pub fn current_prompt(&self) -> String {
+        let text = self.input_content.text();
+        if text.trim().is_empty() {
+            self.input_prompt.clone()
+        } else {
+            text
+        }
+    }
+
+    /// Clears both editor content and cached prompt string.
+    pub fn clear_prompt(&mut self) {
+        self.input_content = iced::widget::text_editor::Content::new();
+        self.input_prompt.clear();
+    }
     /// Polls for incoming background AI events and updates conversation / status.
     pub fn poll_events(&mut self) -> Option<CopilotEvent> {
         let rx = self.event_rx.as_ref()?;

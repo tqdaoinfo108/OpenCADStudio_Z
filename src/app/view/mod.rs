@@ -461,6 +461,12 @@ pub(crate) fn main_window_event(
             crate::ui::icons::set_scale_factor(scale_factor);
             None
         }
+        iced::Event::Window(window::Event::FileHovered(_)) => {
+            Some(Message::AiCopilot(crate::ai::chat_panel::AiCopilotMsg::DragHover(true)))
+        }
+        iced::Event::Window(window::Event::FilesHoveredLeft) => {
+            Some(Message::AiCopilot(crate::ai::chat_panel::AiCopilotMsg::DragHover(false)))
+        }
         iced::Event::Window(window::Event::FileDropped(path)) => Some(Message::FileDropped(path)),
         iced::Event::Keyboard(keyboard::Event::KeyReleased { key, .. }) => {
             crate::ui::ribbon::keytip_key_released(&key)
