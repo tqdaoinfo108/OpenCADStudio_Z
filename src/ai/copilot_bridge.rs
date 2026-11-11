@@ -47,11 +47,15 @@ pub fn launch_copilot_task(
             ai_config,
             session_id,
             &event_tx,
-            stop_thread,
+            stop_thread.clone(),
         ) {
-            let _ = event_tx.send(CopilotEvent::Error {
-                error: e.to_string(),
-            });
+            if stop_thread.load(std::sync::atomic::Ordering::SeqCst) {
+                let _ = event_tx.send(CopilotEvent::Stopped);
+            } else {
+                let _ = event_tx.send(CopilotEvent::Error {
+                    error: e.to_string(),
+                });
+            }
         }
     });
 
@@ -166,7 +170,11 @@ fn run_copilot_worker(
     };
 
     let tx = event_tx.clone();
+    let stop_cp = stop.clone();
     let checkpoint = move |stage: &str, payload: &Value| -> Result<()> {
+        if stop_cp.load(std::sync::atomic::Ordering::SeqCst) {
+            anyhow::bail!("worker shutdown requested; no further CAD operations dispatched");
+        }
         match stage {
             "planning" => {
                 let _ = tx.send(CopilotEvent::Progress {

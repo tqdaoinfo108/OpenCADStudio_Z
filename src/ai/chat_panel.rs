@@ -16,6 +16,7 @@ use iced::{Alignment, Background, Border, Color, Element, Fill, Length, Theme};
 pub enum AiCopilotMsg {
     InputChanged(String),
     SendMessage,
+    StopProcessing,
     AttachFiles,
     RemoveAttachedFile(usize),
     ToggleDwgMode(usize),
@@ -260,13 +261,34 @@ fn render_agent_status_card<'a>(
     status: &'a crate::ai::copilot_state::AgentExecutionStatus,
 ) -> Element<'a, Message> {
     let agent_badge = status.current_agent.badge_title();
+    let stop_btn = button(text("⏹ Dừng").size(11))
+        .on_press(Message::AiCopilot(AiCopilotMsg::StopProcessing))
+        .padding([2, 8])
+        .style(|_theme: &Theme, btn_status| {
+            let bg = match btn_status {
+                button::Status::Hovered => Color::from_rgb(0.9, 0.25, 0.25),
+                button::Status::Pressed => Color::from_rgb(0.7, 0.15, 0.15),
+                _ => Color::from_rgb(0.8, 0.2, 0.2),
+            };
+            button::Style {
+                background: Some(Background::Color(bg)),
+                text_color: Color::WHITE,
+                border: Border {
+                    radius: 3.0.into(),
+                    ..Default::default()
+                },
+                ..Default::default()
+            }
+        });
+
     let card = column![
         row![
             text("⚡").size(12),
             text(agent_badge).size(12),
             Space::new().width(Fill),
             text(format!("{}/{} steps", status.completed_steps, status.total_steps)).size(11),
-        ].align_y(Alignment::Center),
+            stop_btn,
+        ].spacing(6).align_y(Alignment::Center),
         text(&status.description).size(11).color(Color::from_rgb(0.7, 0.8, 0.9)),
     ]
     .spacing(4);
@@ -391,7 +413,25 @@ fn render_input_bar<'a>(state: &'a CopilotState) -> Element<'a, Message> {
         .padding([6, 8]);
 
     let send_btn = if state.is_busy {
-        button(text("Đang chạy...").size(12)).padding([6, 12])
+        button(text("⏹ Dừng").size(12))
+            .on_press(Message::AiCopilot(AiCopilotMsg::StopProcessing))
+            .padding([6, 12])
+            .style(|_theme: &Theme, btn_status| {
+                let bg = match btn_status {
+                    button::Status::Hovered => Color::from_rgb(0.9, 0.25, 0.25),
+                    button::Status::Pressed => Color::from_rgb(0.7, 0.15, 0.15),
+                    _ => Color::from_rgb(0.8, 0.2, 0.2),
+                };
+                button::Style {
+                    background: Some(Background::Color(bg)),
+                    text_color: Color::WHITE,
+                    border: Border {
+                        radius: 4.0.into(),
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                }
+            })
     } else {
         button(text("Gửi ▶").size(12))
             .on_press(Message::AiCopilot(AiCopilotMsg::SendMessage))

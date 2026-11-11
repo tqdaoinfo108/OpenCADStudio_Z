@@ -120,6 +120,7 @@ pub enum CopilotEvent {
     Error {
         error: String,
     },
+    Stopped,
 }
 
 /// Consolidated state of the In-App AI Copilot panel.
@@ -133,6 +134,7 @@ pub struct CopilotState {
     pub selected_handles: Vec<String>,
     pub quick_settings_open: bool,
     pub event_rx: Option<std::sync::mpsc::Receiver<CopilotEvent>>,
+    pub stop_signal: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
 }
 
 impl Default for CopilotState {
@@ -159,6 +161,7 @@ impl Default for CopilotState {
             selected_handles: Vec::new(),
             quick_settings_open: false,
             event_rx: None,
+            stop_signal: None,
         }
     }
 }
@@ -253,6 +256,7 @@ impl CopilotState {
                     self.status.is_active = false;
                     self.status.current_agent = AgentKind::Idle;
                     self.status.description = "Hoàn thành quy trình thiết kế.".to_string();
+                    self.stop_signal = None;
                     self.messages.push(ChatMessage {
                         id: format!("complete-{}", self.messages.len()),
                         role: MessageRole::Assistant,
@@ -270,10 +274,29 @@ impl CopilotState {
                     self.status.is_active = false;
                     self.status.current_agent = AgentKind::Idle;
                     self.status.description = format!("Lỗi: {error}");
+                    self.stop_signal = None;
                     self.messages.push(ChatMessage {
                         id: format!("err-{}", self.messages.len()),
                         role: MessageRole::System,
                         text: format!("❌ **Lỗi thực thi:** {error}"),
+                        timestamp: "Vừa xong".to_string(),
+                        interactive_handles: Vec::new(),
+                        interactive_coords: Vec::new(),
+                        can_undo: false,
+                        can_audit_fix: false,
+                        can_evolve: false,
+                    });
+                }
+                CopilotEvent::Stopped => {
+                    self.is_busy = false;
+                    self.status.is_active = false;
+                    self.status.current_agent = AgentKind::Idle;
+                    self.status.description = "Đã dừng tác vụ AI theo yêu cầu.".to_string();
+                    self.stop_signal = None;
+                    self.messages.push(ChatMessage {
+                        id: format!("stop-{}", self.messages.len()),
+                        role: MessageRole::System,
+                        text: "⏹ **Đã dừng:** Tiến trình AI Copilot đã được dừng lại theo yêu cầu của bạn.".to_string(),
                         timestamp: "Vừa xong".to_string(),
                         interactive_handles: Vec::new(),
                         interactive_coords: Vec::new(),

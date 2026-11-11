@@ -377,3 +377,33 @@ fn test_e2e_ui_chat_controller_full_villa_workflow() {
         assert!(dxf_text.contains(l), "Bản vẽ phải chứa layer {l}");
     }
 }
+
+
+#[test]
+fn test_copilot_stop_signal_and_cancellation() {
+    let mut state = CopilotState::default();
+    let (tx, rx) = std::sync::mpsc::channel();
+    state.event_rx = Some(rx);
+    state.is_busy = true;
+    state.status.is_active = true;
+    state.status.current_agent = AgentKind::Planner;
+
+    let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    state.stop_signal = Some(stop.clone());
+
+    // Trigger stop signal
+    stop.store(true, std::sync::atomic::Ordering::SeqCst);
+    tx.send(CopilotEvent::Stopped).unwrap();
+
+    let event = state.poll_events().expect("should receive stopped event");
+    match event {
+        CopilotEvent::Stopped => {}
+        _ => panic!("expected CopilotEvent::Stopped"),
+    }
+
+    assert!(!state.is_busy);
+    assert!(!state.status.is_active);
+    assert_eq!(state.status.current_agent, AgentKind::Idle);
+    assert!(state.stop_signal.is_none());
+    assert!(state.messages.iter().any(|m| m.text.contains("Đã dừng")));
+}

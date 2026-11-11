@@ -58,7 +58,7 @@ impl OpenCADStudio {
 
                 let session_id = crate::app::control::session_id().to_string();
 
-                copilot_bridge::launch_copilot_task(
+                let stop_flag = copilot_bridge::launch_copilot_task(
                     prompt,
                     self.ai_copilot.attached_files.clone(),
                     handles,
@@ -67,7 +67,29 @@ impl OpenCADStudio {
                     session_id,
                     tx,
                 );
+                self.ai_copilot.stop_signal = Some(stop_flag);
 
+                Task::none()
+            }
+            AiCopilotMsg::StopProcessing => {
+                if let Some(stop) = self.ai_copilot.stop_signal.take() {
+                    stop.store(true, std::sync::atomic::Ordering::SeqCst);
+                }
+                self.ai_copilot.is_busy = false;
+                self.ai_copilot.status.is_active = false;
+                self.ai_copilot.status.current_agent = crate::ai::copilot_state::AgentKind::Idle;
+                self.ai_copilot.status.description = "Đã dừng tác vụ AI theo yêu cầu.".to_string();
+                self.ai_copilot.messages.push(ChatMessage {
+                    id: format!("stop-{}", self.ai_copilot.messages.len()),
+                    role: MessageRole::System,
+                    text: "⏹ **Đã dừng:** Tiến trình AI Copilot đã được dừng lại theo yêu cầu của bạn.".to_string(),
+                    timestamp: "Vừa xong".to_string(),
+                    interactive_handles: Vec::new(),
+                    interactive_coords: Vec::new(),
+                    can_undo: false,
+                    can_audit_fix: false,
+                    can_evolve: false,
+                });
                 Task::none()
             }
             AiCopilotMsg::AttachFiles => {
