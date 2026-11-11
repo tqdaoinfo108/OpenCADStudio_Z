@@ -125,6 +125,7 @@ fn reorder_insertion_index(from: usize, to: usize, after: bool, len: usize) -> O
 
 #[cfg(test)]
 mod block_ops_tests;
+mod ai_copilot;
 pub(super) mod blocks_palette;
 mod command;
 pub(crate) mod context_menu;
@@ -1405,6 +1406,7 @@ impl OpenCADStudio {
             }
             Message::ControlCaptureFrame { redrew } => self.on_control_capture_frame(redrew),
             Message::Graph(message) => self.on_graph(message),
+            Message::AiCopilot(submsg) => self.update_ai_copilot(submsg),
 
             Message::ControlToggle => {
                 self.control.enabled = !self.control.enabled;

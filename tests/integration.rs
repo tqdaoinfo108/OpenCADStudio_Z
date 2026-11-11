@@ -80,3 +80,6 @@ mod zoom_extents_coverage;
 
 #[path = "zoom_extents_xline.rs"]
 mod zoom_extents_xline;
+
+#[path = "copilot_multimodal_tests.rs"]
+mod copilot_multimodal_tests;

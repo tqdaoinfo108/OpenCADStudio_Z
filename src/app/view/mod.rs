@@ -3927,6 +3927,13 @@ impl OpenCADStudio {
         };
         #[cfg(target_arch = "wasm32")]
         let plugin_drain = Subscription::none();
+        // Autonomous AI Copilot UI poll tick when running or panel is visible.
+        let ai_copilot_tick = if self.show_ai_copilot || self.ai_copilot.is_busy {
+            iced::time::every(std::time::Duration::from_millis(150))
+                .map(|_| Message::AiCopilot(crate::ai::chat_panel::AiCopilotMsg::PollTick))
+        } else {
+            Subscription::none()
+        };
         // While a sheet set is open: it reloads when its .dst changes on disk,
         // and its sheets' .dwl lock files follow the open tabs.
         #[cfg(not(target_arch = "wasm32"))]
@@ -4002,6 +4009,7 @@ impl OpenCADStudio {
             web_fonts,
             autosave,
             plugin_drain,
+            ai_copilot_tick,
             sheet_set_poll,
             single_instance,
             hatch_pattern_keys,

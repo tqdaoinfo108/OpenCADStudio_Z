@@ -22,6 +22,8 @@ use std::{
 };
 use uuid::Uuid;
 
+pub type InProcessClientFactory = Arc<dyn Fn() -> Result<crate::bridge::McpClient> + Send + Sync>;
+
 #[derive(Clone)]
 pub struct WorkerConfig {
     pub executable: PathBuf,
@@ -29,6 +31,7 @@ pub struct WorkerConfig {
     pub timeout: Duration,
     pub max_tool_rounds: usize,
     pub stop: Arc<AtomicBool>,
+    pub in_process_factory: Option<InProcessClientFactory>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -69,11 +72,17 @@ impl Orchestrator {
         fs::create_dir_all(job.output.parent().context("job output has no parent")?)?;
         fs::create_dir(&job.output)
             .context("job output already exists; refusing to replay an earlier job")?;
-        let mut cad = CadSession::connect(
-            &self.config.executable,
-            self.config.timeout,
-            self.config.session_id.as_deref(),
-        )?;
+        let mut cad = if let Some(factory) = &self.config.in_process_factory {
+            let client = factory()?;
+            let session_id = self.config.session_id.as_deref().unwrap_or("in-process");
+            CadSession::connect_in_process(client, session_id)?
+        } else {
+            CadSession::connect(
+                &self.config.executable,
+                self.config.timeout,
+                self.config.session_id.as_deref(),
+            )?
+        };
         checkpoint("session", &json!({"session_id":cad.session_id}))?;
         let capabilities = cad.read("capabilities", json!({}))?;
         write_json(&job.output.join("capabilities.json"), &capabilities)?;

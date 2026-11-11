@@ -351,7 +351,16 @@ impl OpenCADStudio {
         if let Some(task) = self.dispatch_block_editor_vars(cmd, i) {
             return Some(task);
         }
-        if cmd.trim_start_matches(['_', '.']) == "BGRIPSET" {
+        let clean_cmd = cmd.trim_start_matches(['_', '.']);
+        if matches!(clean_cmd.to_ascii_uppercase().as_str(), "AICOPILOT" | "AI" | "COPILOT") {
+            self.show_ai_copilot = !self.show_ai_copilot;
+            if self.show_ai_copilot {
+                self.dock_open_at_default(crate::ui::dock::PanelId::AiCopilot);
+            }
+            self.save_config();
+            return Some(Task::none());
+        }
+        if clean_cmd == "BGRIPSET" {
             return Some(self.start_block_grip_set());
         }
         let construction = cmd.trim_start_matches(['_', '.']);

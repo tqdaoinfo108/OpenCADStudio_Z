@@ -1603,11 +1603,13 @@ impl OpenCADStudio {
                     .collect(),
             },
             model_space: self.model_space.clone(),
+            ai: self.ai_config.clone(),
         }
     }
 
     /// Distribute a loaded config into live app state (called once at startup).
     pub(in crate::app) fn apply_config(&mut self, cfg: crate::app::config::AppConfig) {
+        self.ai_config = cfg.ai;
         self.apply_settings(&cfg.settings);
         self.ui_theme = cfg.theme.clone();
         // A saved `System` scheme re-resolves at boot: the stored palette is

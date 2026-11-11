@@ -426,6 +426,16 @@ pub fn quad_panels_for_target(
                     .filter(|p| target.matches_applies(&p.applies_to))
                     .map(plugin_panel),
             );
+            panels.push(QuadPanel {
+                id: "quad.ai".to_string(),
+                label: "AI Copilot".to_string(),
+                items: vec![QuadItem {
+                    label: "Ask AI / Auto-Develop Selection".to_string(),
+                    command: "AICOPILOT".to_string(),
+                    icon: QuadIcon::Glyph("AI".to_string()),
+                }],
+                applies_to: Vec::new(),
+            });
         }
     }
     panels

@@ -1,6 +1,7 @@
 #![allow(non_snake_case)]
 #![recursion_limit = "512"]
 
+pub mod ai;
 pub mod app;
 
 /// The Quad display-option message, re-exported at the crate root so every

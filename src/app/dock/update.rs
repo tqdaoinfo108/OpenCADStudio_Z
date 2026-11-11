@@ -606,6 +606,11 @@ impl OpenCADStudio {
                         self.dock_open_at_default(id);
                         self.save_config();
                     }
+                    PanelId::AiCopilot => {
+                        self.show_ai_copilot = true;
+                        self.dock_open_at_default(id);
+                        self.save_config();
+                    }
                     PanelId::Plugin(num) => {
                         if let Some(panel_id) = self.plugin_panel_by_num.get(&num) {
                             if let Some(panel) = self.plugin_panels.get_mut(panel_id) {
@@ -699,6 +704,10 @@ impl OpenCADStudio {
             PanelId::QuickCalc => self.quick_calc.show = false,
             PanelId::CommandHistory => {
                 self.show_command_history = false;
+                self.save_config();
+            }
+            PanelId::AiCopilot => {
+                self.show_ai_copilot = false;
                 self.save_config();
             }
             PanelId::GraphicAttributes => {
@@ -834,6 +843,7 @@ impl OpenCADStudio {
             }
             PanelId::QuickCalc => self.quick_calc.show,
             PanelId::CommandHistory => self.show_command_history,
+            PanelId::AiCopilot => self.show_ai_copilot,
             PanelId::GraphicAttributes => self.show_graphic_attributes,
             PanelId::Plugin(num) => {
                 if let Some(panel_id) = self.plugin_panel_by_num.get(&num) {

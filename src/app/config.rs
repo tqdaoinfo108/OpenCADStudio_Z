@@ -58,6 +58,8 @@ pub struct AppConfig {
     pub model_space: ModelSpaceThemeConfig,
     /// The user's changes to the right-click menu.
     pub context_menu: crate::ui::popup::context_menu::MenuCustomization,
+    /// Autonomous In-App AI Copilot settings.
+    pub ai: AiConfig,
 }
 
 impl Default for AppConfig {
@@ -82,6 +84,68 @@ impl Default for AppConfig {
             shortcuts: ShortcutConfig::default(),
             model_space: ModelSpaceThemeConfig::default(),
             context_menu: Default::default(),
+            ai: AiConfig::default(),
+        }
+    }
+}
+
+/// In-App AI Copilot settings and persistence.
+#[derive(Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct AiConfig {
+    pub api_key: String,
+    pub base_url: String,
+    pub planner_model: String,
+    pub vision_model: String,
+}
+
+impl Default for AiConfig {
+    fn default() -> Self {
+        Self {
+            api_key: String::new(),
+            base_url: "https://api.openai.com/v1".to_string(),
+            planner_model: "gpt-4o".to_string(),
+            vision_model: "gpt-4o".to_string(),
+        }
+    }
+}
+
+impl AiConfig {
+    pub fn resolved_api_key(&self) -> String {
+        if !self.api_key.trim().is_empty() {
+            self.api_key.trim().to_string()
+        } else {
+            std::env::var("OPENAI_API_KEY").unwrap_or_default()
+        }
+    }
+
+    pub fn resolved_base_url(&self) -> String {
+        if !self.base_url.trim().is_empty() {
+            self.base_url.trim().to_string()
+        } else if let Ok(url) = std::env::var("OPENAI_BASE_URL") {
+            url
+        } else {
+            "https://api.openai.com/v1".to_string()
+        }
+    }
+
+    pub fn resolved_planner_model(&self) -> String {
+        if !self.planner_model.trim().is_empty() {
+            self.planner_model.trim().to_string()
+        } else if let Ok(m) = std::env::var("OPENAI_MODEL") {
+            m
+        } else {
+            "gpt-4o".to_string()
+        }
+    }
+
+    pub fn resolved_vision_model(&self) -> String {
+        if !self.vision_model.trim().is_empty() {
+            self.vision_model.trim().to_string()
+        } else if let Ok(m) = std::env::var("OPENAI_VISION_MODEL") {
+            m
+        } else {
+            self.resolved_planner_model()
         }
     }
 }

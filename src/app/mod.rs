@@ -1528,6 +1528,12 @@ pub(super) struct OpenCADStudio {
     render_mode_preview: Option<document::entities::ViewportRenderMode>,
     /// Whether the Properties panel is shown on the left (PROPERTIES).
     show_properties: bool,
+    /// In-App Autonomous AI Copilot panel visibility.
+    pub(crate) show_ai_copilot: bool,
+    /// In-App AI Copilot chat & multi-agent execution state.
+    pub(crate) ai_copilot: crate::ai::copilot_state::CopilotState,
+    /// AI OpenAI endpoint & models configuration.
+    pub(crate) ai_config: crate::app::config::AiConfig,
     /// The Layer Manager pallet (LAYERS) is open.
     pub(crate) show_layers: bool,
     /// Whether the Graphic Attributes palette is shown (GRAPHICATTRIBUTES).
@@ -3577,6 +3583,8 @@ pub enum Message {
     ControlToggle,
     /// Node graph overlay interaction.
     Graph(crate::ui::node_graph::GraphMsg),
+    /// In-App Autonomous AI Copilot UI interaction.
+    AiCopilot(crate::ai::chat_panel::AiCopilotMsg),
     Tick(Instant),
     /// Periodic drain of plugin-to-host requests that arrived outside a host
     /// call (e.g. mutations from the Python REPL).
@@ -6570,6 +6578,9 @@ impl OpenCADStudio {
             render_mode_menu_open: false,
             render_mode_preview: None,
             show_properties: true,
+            show_ai_copilot: false,
+            ai_copilot: Default::default(),
+            ai_config: Default::default(),
             show_layers: false,
             show_graphic_attributes: false,
             show_command_history: false,

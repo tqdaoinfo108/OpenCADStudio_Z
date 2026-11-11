@@ -602,6 +602,9 @@ impl OpenCADStudio {
                 self.command_line
                     .history_panel(&self.history_content, width, chrome)
             }
+            crate::ui::dock::PanelId::AiCopilot => {
+                crate::ai::chat_panel::view_copilot_panel(&self.ai_copilot, &self.ai_config, width)
+            }
             crate::ui::dock::PanelId::Plugin(num) => {
                 if let Some(panel_id) = self.plugin_panel_by_num.get(&num) {
                     if let Some(state) = self.plugin_panels.get(panel_id) {

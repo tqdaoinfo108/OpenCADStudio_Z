@@ -43,6 +43,28 @@ impl OpenAi {
         })
     }
 
+    pub fn new(
+        endpoint: &str,
+        key: &str,
+        model: &str,
+        vision_model: &str,
+    ) -> Result<Self> {
+        let ep = completion_endpoint(endpoint)?;
+        ensure!(!key.trim().is_empty(), "OpenAI API key cannot be empty");
+        let config = ureq::Agent::config_builder()
+            .timeout_global(Some(Duration::from_secs(300)))
+            .http_status_as_error(false)
+            .build();
+        Ok(Self {
+            agent: config.into(),
+            endpoint: ep,
+            key: key.trim().to_string(),
+            model: model.to_string(),
+            vision_model: vision_model.to_string(),
+            max_completion_tokens: 12000,
+        })
+    }
+
     pub fn completion(
         &self,
         model: &str,

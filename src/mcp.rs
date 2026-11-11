@@ -274,7 +274,7 @@ fn stale_snapshot_may_delete(missing_from_snapshot: bool, file_age: Duration) ->
     missing_from_snapshot && file_age >= DESCRIPTOR_GRACE
 }
 
-struct GuiClient {
+pub(crate) struct GuiClient {
     descriptor: Descriptor,
     state: Value,
     client_id: String,
@@ -294,9 +294,17 @@ struct GuiClient {
 /// loop (and, during waits, the wait loop) is the only consumer, so stdout
 /// stays single-writer. Non-cancel lines met during a wait are stowed in
 /// `backlog` and handled in order once the wait ends.
-struct CancelPump {
-    rx: Receiver<Result<String, String>>,
-    backlog: VecDeque<String>,
+pub(crate) struct CancelPump {
+    pub(crate) rx: Receiver<Result<String, String>>,
+    pub(crate) backlog: VecDeque<String>,
+}
+
+pub(crate) fn detached_pump() -> CancelPump {
+    let (_tx, rx) = std::sync::mpsc::channel();
+    CancelPump {
+        rx,
+        backlog: VecDeque::new(),
+    }
 }
 
 enum PumpEvent {
@@ -412,7 +420,7 @@ struct StoredTask {
 }
 
 #[derive(Default)]
-struct TaskStore {
+pub(crate) struct TaskStore {
     tasks: VecDeque<StoredTask>,
 }
 
@@ -458,7 +466,7 @@ struct CachedSnapshot {
 }
 
 #[derive(Default)]
-struct ResourceStore {
+pub(crate) struct ResourceStore {
     snapshots: HashMap<String, CachedSnapshot>,
     order: VecDeque<String>,
     latest: HashMap<String, String>,
@@ -2811,7 +2819,7 @@ fn unsupported_protocol(id: Value, requested: &str) -> Value {
     })
 }
 
-fn handle_message(
+pub(crate) fn handle_message(
     message: Value,
     clients: &mut HashMap<String, GuiClient>,
     tasks: &mut TaskStore,
@@ -3216,19 +3224,42 @@ pub fn run() {
     }
 }
 
+/// Creates an in-process McpClient executing tools directly within OpenCADStudio without any subprocess.
+pub fn create_in_process_mcp_client(timeout: Duration) -> anyhow::Result<ocs_ai_worker::bridge::McpClient> {
+    struct State {
+        clients: HashMap<String, GuiClient>,
+        tasks: TaskStore,
+        resources: ResourceStore,
+        pump: CancelPump,
+    }
+    let state = std::sync::Arc::new(std::sync::Mutex::new(State {
+        clients: HashMap::new(),
+        tasks: TaskStore::default(),
+        resources: ResourceStore::default(),
+        pump: detached_pump(),
+    }));
+
+    let state_clone = state.clone();
+    ocs_ai_worker::bridge::McpClient::in_process(
+        std::sync::Arc::new(move |req_msg| {
+            let mut s = state_clone.lock().unwrap();
+            let State { ref mut clients, ref mut tasks, ref mut resources, ref mut pump } = *s;
+            handle_message(
+                req_msg,
+                clients,
+                tasks,
+                resources,
+                pump,
+            )
+            .unwrap_or_else(|| json!({"jsonrpc": "2.0", "result": {}}))
+        }),
+        timeout,
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    /// A pump with no reader: waits behave exactly as before (quiet
-    /// immediately), so tests that never cancel need no other changes.
-    fn detached_pump() -> CancelPump {
-        let (_tx, rx) = std::sync::mpsc::channel();
-        CancelPump {
-            rx,
-            backlog: VecDeque::new(),
-        }
-    }
 
     #[test]
     fn advertises_the_shared_tools() {

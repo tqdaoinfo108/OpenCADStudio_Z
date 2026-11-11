@@ -239,6 +239,7 @@ fn main() -> Result<()> {
                     timeout: Duration::from_secs(timeout_seconds),
                     max_tool_rounds,
                     stop: stop.clone(),
+                    in_process_factory: None,
                 };
                 workers.push(thread::spawn(move || {
                     run_slot(db, config, Duration::from_secs(poll_seconds), once)

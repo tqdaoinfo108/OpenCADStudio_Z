@@ -86,7 +86,7 @@ struct WriteJob {
 /// Owns only the `--mcp` bridge, never the attached or bridge-launched GUI.
 /// Transport failures poison the client; there is deliberately no reconnect/replay.
 pub struct McpClient {
-    child: Child,
+    child: Option<Child>,
     outgoing: Option<SyncSender<WriteJob>>,
     incoming: Receiver<io::Result<Vec<u8>>>,
     workers: Vec<JoinHandle<()>>,
@@ -145,7 +145,7 @@ impl McpClient {
             let _ = io::copy(&mut BufReader::new(stderr), &mut io::sink());
         });
         let mut client = Self {
-            child,
+            child: Some(child),
             outgoing: Some(outgoing),
             incoming,
             workers: vec![writer, reader, errors],
@@ -156,8 +156,60 @@ impl McpClient {
             broken: false,
             instance_id: Uuid::new_v4(),
         };
-        let deadline = client.deadline()?;
-        let initialized = client.rpc(
+        client.handshake()?;
+        Ok(client)
+    }
+
+    /// Connects to an in-process MCP handler without spawning any subprocess.
+    pub fn in_process(
+        handler: std::sync::Arc<dyn Fn(Value) -> Value + Send + Sync>,
+        timeout: Duration,
+    ) -> Result<Self> {
+        ensure!(!timeout.is_zero(), "MCP timeout must be positive");
+        let (outgoing, writes) = mpsc::sync_channel::<WriteJob>(1);
+        let (frames, incoming) = mpsc::sync_channel(4);
+        let worker = thread::spawn(move || {
+            while let Ok(job) = writes.recv() {
+                let (has_id, response) = match serde_json::from_slice::<Value>(&job.bytes) {
+                    Ok(req) => {
+                        let is_notification = req.get("id").is_none();
+                        let resp = handler(req);
+                        (!is_notification, resp)
+                    }
+                    Err(e) => (
+                        true,
+                        json!({"jsonrpc":"2.0","error":{"code":-32700,"message":e.to_string()}}),
+                    ),
+                };
+                let _ = job.done.send(Ok(()));
+                if has_id {
+                    let mut bytes = serde_json::to_vec(&response).unwrap_or_default();
+                    bytes.push(b'\n');
+                    if frames.send(Ok(bytes)).is_err() {
+                        break;
+                    }
+                }
+            }
+        });
+        let mut client = Self {
+            child: None,
+            outgoing: Some(outgoing),
+            incoming,
+            workers: vec![worker],
+            timeout,
+            serial: 0,
+            modern: false,
+            tasks: false,
+            broken: false,
+            instance_id: Uuid::new_v4(),
+        };
+        client.handshake()?;
+        Ok(client)
+    }
+
+    fn handshake(&mut self) -> Result<()> {
+        let deadline = self.deadline()?;
+        let initialized = self.rpc(
             "initialize",
             json!({
                 "protocolVersion": LEGACY_PROTOCOL,
@@ -170,19 +222,18 @@ impl McpClient {
             initialized["protocolVersion"].as_str() == Some(LEGACY_PROTOCOL),
             "Bridge negotiated an unsupported MCP protocol"
         );
-        client.send(
+        self.send(
             json!({"jsonrpc":"2.0","method":"notifications/initialized","params":{}}),
             deadline,
         )?;
-        // OCS supports discovery even on the initialized legacy channel. Never guess modern support.
-        match client.rpc("server/discover", json!({}), deadline) {
+        match self.rpc("server/discover", json!({}), deadline) {
             Ok(discovery) => {
-                client.modern = discovery["supportedVersions"]
+                self.modern = discovery["supportedVersions"]
                     .as_array()
                     .is_some_and(|versions| {
                         versions.iter().any(|v| v.as_str() == Some(MODERN_PROTOCOL))
                     });
-                client.tasks = client.modern
+                self.tasks = self.modern
                     && discovery["capabilities"]["extensions"]["io.modelcontextprotocol/tasks"]
                         .is_object();
             }
@@ -192,7 +243,7 @@ impl McpClient {
                     .is_some_and(|e| e.code == -32601) => {}
             Err(error) => return Err(error.context("Discovering MCP protocol")),
         }
-        Ok(client)
+        Ok(())
     }
     /// Full tools/call result, including images, content, structuredContent and isError.
     /// Task polling shares a single deadline with the original call.
@@ -359,12 +410,14 @@ impl McpClient {
     }
     fn send(&mut self, value: Value, deadline: Instant) -> Result<()> {
         ensure!(!self.broken, "MCP transport is closed");
-        match self.child.try_wait() {
-            Ok(Some(status)) => {
-                return self.fail(anyhow!("MCP bridge exited ({status}); outcome unknown"))
+        if let Some(child) = self.child.as_mut() {
+            match child.try_wait() {
+                Ok(Some(status)) => {
+                    return self.fail(anyhow!("MCP bridge exited ({status}); outcome unknown"))
+                }
+                Ok(None) => {}
+                Err(error) => return self.fail(anyhow!(error).context("Checking MCP bridge")),
             }
-            Ok(None) => {}
-            Err(error) => return self.fail(anyhow!(error).context("Checking MCP bridge")),
         }
         let mut bytes = serde_json::to_vec(&value)?;
         ensure!(
@@ -417,8 +470,10 @@ impl McpClient {
     fn shutdown(&mut self) {
         self.broken = true;
         self.outgoing.take();
-        let _ = self.child.kill();
-        let _ = self.child.wait();
+        if let Some(mut child) = self.child.take() {
+            let _ = child.kill();
+            let _ = child.wait();
+        }
     }
 }
 impl Drop for McpClient {
@@ -602,6 +657,24 @@ impl CadSession {
                 )?;
             }
         }
+        Ok(session)
+    }
+
+    /// Directly connects to an in-process McpClient without launching an external OpenCADStudio process.
+    pub fn connect_in_process(client: McpClient, session_id: &str) -> Result<Self> {
+        let id = session_id.to_owned();
+        let mut session = Self {
+            client,
+            session_id: id.clone(),
+            pinned_session_id: id,
+            document_id: None,
+            revision: None,
+            pinned_document: None,
+            client_id: format!("in-process-{}", Uuid::new_v4()),
+            mutations: HashMap::new(),
+        };
+        let state = session.read("state", json!({}))?;
+        session.observe(&state)?;
         Ok(session)
     }
     pub fn read(&mut self, op: &str, parameters: Value) -> Result<Value> {
