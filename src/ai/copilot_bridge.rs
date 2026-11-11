@@ -132,7 +132,9 @@ fn run_copilot_worker(
 
     let job_id = Uuid::new_v4().to_string();
     let delivery_dir = PathBuf::from("target/ai-deliveries").join(&job_id);
-    std::fs::create_dir_all(&delivery_dir)?;
+    if let Some(parent) = delivery_dir.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
 
     let mode_a_input = attached_files
         .iter()

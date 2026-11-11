@@ -70,8 +70,16 @@ impl Orchestrator {
     ) -> Result<Value> {
         job.spec.validate()?;
         fs::create_dir_all(job.output.parent().context("job output has no parent")?)?;
-        fs::create_dir(&job.output)
-            .context("job output already exists; refusing to replay an earlier job")?;
+        if job.output.exists() {
+            let is_empty = fs::read_dir(&job.output)?.next().is_none();
+            ensure!(
+                is_empty,
+                "job output already exists and is not empty; refusing to replay an earlier job"
+            );
+        } else {
+            fs::create_dir(&job.output)
+                .context("job output already exists; refusing to replay an earlier job")?;
+        }
         let mut cad = if let Some(factory) = &self.config.in_process_factory {
             let client = factory()?;
             let session_id = self.config.session_id.as_deref().unwrap_or("in-process");
