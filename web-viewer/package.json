@@ -1,0 +1,33 @@
+{
+  "name": "opencadstudio-web-viewer",
+  "version": "1.0.0",
+  "description": "Nếp Nhà - Hồ sơ kiến trúc: Interactive 3D Architectural Dollhouse Web Viewer for OpenCADStudio CAD/DXF drawings",
+  "type": "module",
+  "main": "index.html",
+  "scripts": {
+    "server": "node server/index.js",
+    "start": "node server/index.js",
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "deploy:lightsail": "powershell -ExecutionPolicy Bypass -File deploy/deploy_lightsail.ps1"
+  },
+  "keywords": [
+    "cad",
+    "bim",
+    "threejs",
+    "dollhouse",
+    "architecture",
+    "dxf",
+    "webgl"
+  ],
+  "author": "OpenCADStudio",
+  "license": "GPL-3.0-or-later",
+  "packageManager": "pnpm@11.23.0",
+  "dependencies": {
+    "three": "^0.160.0"
+  },
+  "devDependencies": {
+    "vite": "^5.0.12"
+  }
+}

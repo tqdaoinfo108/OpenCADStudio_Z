@@ -696,9 +696,8 @@ pub enum StartSection {
     Recent,
     Videos,
     #[default]
+    #[serde(other)]
     Welcome,
-    Discussions,
-    Supporters,
 }
 
 /// How the Start page lists recent files.
@@ -781,9 +780,6 @@ pub(super) struct OpenCADStudio {
     recent_limit_input: String,
     recent_view: RecentView,
     command_line: CommandLine,
-    /// Recent Patreon supporters shown on the Start page (name, USD cents),
-    /// fetched once at boot, highest payment first.
-    patrons: Vec<(String, i64)>,
     /// Tutorial-playlist videos for the Start page: seeded from the on-disk
     /// cache at boot, refreshed by a live playlist fetch.
     videos: Vec<crate::videos::VideoEntry>,
@@ -792,10 +788,6 @@ pub(super) struct OpenCADStudio {
     video_thumbs: std::collections::HashMap<String, iced::widget::image::Handle>,
     /// True while the boot-time playlist fetch is still in flight.
     videos_loading: bool,
-    /// GitHub Discussions shown on the Start page, with pinned entries first.
-    discussions: Vec<crate::discussions::DiscussionEntry>,
-    /// True while the boot-time Discussions refresh is still in flight.
-    discussions_loading: bool,
     /// Collapsed Properties-panel section titles. This belongs to the app,
     /// rather than an individual document tab, so the same view preference is
     /// used by every currently open drawing/project.
@@ -5425,12 +5417,8 @@ pub enum Message {
     PluginRegistryErrorDetailsToggle,
     /// Copy registry URL, platform, version, and raw error details.
     PluginRegistryCopyDiagnostics,
-    /// Patreon supporters fetched at boot for the Start page (name, USD cents).
-    PatronsFetched(Result<Vec<(String, i64)>, String>),
     /// Tutorial-playlist videos fetched at boot for the Start page.
     VideosFetched(Result<Vec<crate::videos::VideoEntry>, String>),
-    /// GitHub Discussions fetched at boot for the Start page.
-    DiscussionsFetched(Result<Vec<crate::discussions::DiscussionEntry>, String>),
     /// Recent-file DWG preview thumbnails decoded on a background thread.
     RecentThumbsLoaded(Vec<(std::path::PathBuf, Option<iced::widget::image::Handle>)>),
     /// Installable releases and manifest API versions fetched for `owner/repo`.
@@ -6253,12 +6241,9 @@ impl OpenCADStudio {
             recent_limit_input: recent::RECENT_DEFAULT.to_string(),
             recent_view: RecentView::default(),
             command_line: CommandLine::new(),
-            patrons: Vec::new(),
             videos: Vec::new(),
             video_thumbs: std::collections::HashMap::new(),
             videos_loading: false,
-            discussions: Vec::new(),
-            discussions_loading: false,
             collapsed_property_sections: rustc_hash::FxHashSet::default(),
             layer_filters: Vec::new(),
             ribbon_layers_follow_filter: false,
@@ -7216,14 +7201,6 @@ impl OpenCADStudio {
         if !has_script {
             s.queue_startup_prompts();
         }
-        // Fetch the Patreon supporters list once at boot for the Start page.
-        #[cfg(not(target_arch = "wasm32"))]
-        let patrons_fetch = Task::perform(
-            async { crate::patreon::fetch_patrons() },
-            Message::PatronsFetched,
-        );
-        #[cfg(target_arch = "wasm32")]
-        let patrons_fetch = Task::none();
         // Tutorial videos: show the on-disk cache instantly, refresh from the
         // live playlist in the background. Nothing ships in the binary. The
         // fetch runs on its own OS thread — its several sequential HTTP
@@ -7247,26 +7224,6 @@ impl OpenCADStudio {
         };
         #[cfg(target_arch = "wasm32")]
         let videos_fetch = Task::none();
-        // GitHub Discussions: seed from the last successful fetch, then refresh
-        // the public feed and pinned section on a background thread.
-        #[cfg(not(target_arch = "wasm32"))]
-        let discussions_fetch = {
-            s.discussions = crate::discussions::load_cached();
-            s.discussions_loading = true;
-            let (tx, rx) = iced::futures::channel::oneshot::channel();
-            std::thread::spawn(move || {
-                let _ = tx.send(crate::discussions::fetch_discussions());
-            });
-            Task::perform(
-                async move {
-                    rx.await
-                        .unwrap_or_else(|_| Err("discussion fetch thread died".into()))
-                },
-                Message::DiscussionsFetched,
-            )
-        };
-        #[cfg(target_arch = "wasm32")]
-        let discussions_fetch = Task::none();
         // Recent-file thumbnails: decoded off-thread — parsing every recent
         // DWG's preview on the boot path held the first frame back.
         let thumbs_fetch = s.refresh_recent_thumbs();
@@ -7278,9 +7235,7 @@ impl OpenCADStudio {
                 focus_cmd,
                 cli_open,
                 script,
-                patrons_fetch,
                 videos_fetch,
-                discussions_fetch,
                 thumbs_fetch,
             ]),
         )
@@ -7312,16 +7267,8 @@ impl OpenCADStudio {
             Task::done(Message::PollWebFonts),
             Task::done(Message::ApplyWebFont(primary_font)),
         ]);
-        // Web can't reach the Patreon API directly (CORS); fetch the CI-built
-        // supporters.json served on the same origin instead.
-        let patrons = Task::perform(crate::patreon::fetch_patrons_web(), Message::PatronsFetched);
         s.videos_loading = true;
         let videos = Task::perform(crate::videos::fetch_playlist_web(), Message::VideosFetched);
-        s.discussions_loading = true;
-        let discussions = Task::perform(
-            crate::discussions::fetch_discussions_web(),
-            Message::DiscussionsFetched,
-        );
         let thumbs_fetch = s.refresh_recent_thumbs();
         // Crash-recovery scan: OPFS snapshots newer than a drawing's last
         // saved copy come back as a restore prompt (stale ones are deleted).
@@ -7374,9 +7321,7 @@ impl OpenCADStudio {
             Task::batch([
                 focus,
                 fonts,
-                patrons,
                 videos,
-                discussions,
                 thumbs_fetch,
                 autosave_scan,
                 deep_link,

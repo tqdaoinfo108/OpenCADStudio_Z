@@ -30,6 +30,7 @@ pub enum AttachedFileType {
     Excel,
     DwgDxf,
     Csv,
+    SiteImage,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -44,6 +45,11 @@ pub struct AttachedFile {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum AgentKind {
     Idle,
+    LeadOrchestrator,
+    SiteSpecialist,
+    SpatialPlanner,
+    BimModeler,
+    QaInspector,
     Planner,
     Execution,
     QaCritic,
@@ -54,9 +60,11 @@ impl AgentKind {
     pub fn badge_title(&self) -> &'static str {
         match self {
             AgentKind::Idle => "Sẵn sàng",
-            AgentKind::Planner => "[Planner] Quy hoạch kiến trúc",
-            AgentKind::Execution => "[Execution] Dựng hình & Batch CAD",
-            AgentKind::QaCritic => "[QA Critic] Kiểm toán & Vision QA",
+            AgentKind::LeadOrchestrator => "[Lead Architect] Tổng công trình sư điều phối",
+            AgentKind::SiteSpecialist => "[Site Specialist] Bóc tách khu đất & quy chuẩn",
+            AgentKind::SpatialPlanner | AgentKind::Planner => "[Spatial Planner] Quy hoạch kết cấu & mặt bằng",
+            AgentKind::BimModeler | AgentKind::Execution => "[BIM Modeler] Triển khai 2D/3D & Batch CAD",
+            AgentKind::QaInspector | AgentKind::QaCritic => "[QA Inspector] Kiểm toán hình học & Vision QA",
             AgentKind::Evolution => "[Evolution] Đề xuất phát triển tiếp",
         }
     }

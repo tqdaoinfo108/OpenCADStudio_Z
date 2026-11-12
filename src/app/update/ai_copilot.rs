@@ -197,6 +197,7 @@ impl OpenCADStudio {
                         let file_type = match ext.as_str() {
                             "xlsx" | "xls" => AttachedFileType::Excel,
                             "dwg" | "dxf" => AttachedFileType::DwgDxf,
+                            "png" | "jpg" | "jpeg" | "bmp" | "webp" => AttachedFileType::SiteImage,
                             _ => AttachedFileType::Csv,
                         };
 
@@ -221,6 +222,9 @@ impl OpenCADStudio {
                                     ),
                                     Err(e) => format!("Lỗi đọc: {e}"),
                                 }
+                            }
+                            AttachedFileType::SiteImage => {
+                                "Ảnh Sổ đỏ / Bản đồ khu đất".to_string()
                             }
                         };
 

@@ -111,6 +111,12 @@ fn run_copilot_worker(
                     }
                 }
             }
+            AttachedFileType::SiteImage => {
+                prompt_sections.push(format!(
+                    "[HỒ SƠ SỔ ĐỎ / TRÍCH LỤC THỬA ĐẤT: {} - Kích hoạt Sub-Agent Site Specialist]",
+                    file.name
+                ));
+            }
         }
     }
 

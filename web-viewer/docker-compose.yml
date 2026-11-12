@@ -1,0 +1,29 @@
+services:
+  web-viewer:
+    build: .
+    container_name: nepnha-web-viewer
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - HOST=0.0.0.0
+      - DATABASE_DRIVER=sqlite
+      # - OPENAI_API_KEY=your_key_here
+      # - MONGODB_URI=mongodb://mongo:27017/nepnha
+    volumes:
+      - ./data:/app/data
+
+  # Optional MongoDB service (activate when DATABASE_DRIVER=mongodb)
+  # mongo:
+  #   image: mongo:7-jammy
+  #   container_name: nepnha-mongo
+  #   restart: unless-stopped
+  #   ports:
+  #     - "27017:27017"
+  #   volumes:
+  #     - mongo-data:/data/db
+
+# volumes:
+#   mongo-data:

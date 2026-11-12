@@ -1,0 +1,18 @@
+[Unit]
+Description=Nep Nha - Interactive 3D Architectural Viewer & REST API (Port 99)
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/var/www/nepnha-viewer
+ExecStart=/usr/bin/node server/index.js
+Restart=always
+RestartSec=5
+Environment=PORT=99
+Environment=NODE_ENV=production
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+LimitNOFILE=65535
+
+[Install]
+WantedBy=multi-user.target

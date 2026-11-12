@@ -89,3 +89,6 @@ mod smart_mcp_tests;
 
 #[path = "brownfield_and_multimodal_e2e_tests.rs"]
 mod brownfield_and_multimodal_e2e_tests;
+
+#[path = "enterprise_subagent_tests.rs"]
+mod enterprise_subagent_tests;

@@ -159,6 +159,7 @@ pub fn view_copilot_panel<'a>(
                 AttachedFileType::Excel => "📊",
                 AttachedFileType::DwgDxf => "📐",
                 AttachedFileType::Csv => "📄",
+                AttachedFileType::SiteImage => "🗺️",
             };
 
             let mode_tag = match file.file_type {

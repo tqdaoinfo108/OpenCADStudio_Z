@@ -10,5 +10,7 @@ pub mod geometric_precision;
 pub mod mcp_resilience;
 pub mod multimodal;
 pub mod smart_macro;
+pub mod site_parcel_analyzer;
 pub mod spatial_query;
+pub mod subagent_swarm;
 pub mod topology_summarizer;
