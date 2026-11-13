@@ -80,12 +80,26 @@ export class AiChatController {
     });
   }
 
+  setDrawerOpen(panel, open) {
+    let backdrop = document.getElementById('chat-drawer-backdrop');
+    if (!backdrop) {
+      backdrop = document.createElement('div');
+      backdrop.id = 'chat-drawer-backdrop';
+      backdrop.addEventListener('click', () => this.closePanel());
+      panel.before(backdrop);
+    }
+    backdrop.hidden = !open;
+    panel.classList.toggle('open', open);
+    panel.inert = !open;
+  }
+
   togglePanel() {
     const panel = document.getElementById('ai-chat-panel');
     const toggleBtn = document.getElementById('btn-toggle-chat');
     if (!panel) return;
 
-    const isOpen = panel.classList.toggle('open');
+    const isOpen = !panel.classList.contains('open');
+    this.setDrawerOpen(panel, isOpen);
     if (toggleBtn) {
       toggleBtn.classList.toggle('active', isOpen);
     }
@@ -100,7 +114,7 @@ export class AiChatController {
     const panel = document.getElementById('ai-chat-panel');
     const toggleBtn = document.getElementById('btn-toggle-chat');
     if (panel) {
-      panel.classList.add('open');
+      this.setDrawerOpen(panel, true);
       if (toggleBtn) toggleBtn.classList.add('active');
     }
   }
@@ -109,7 +123,7 @@ export class AiChatController {
     const panel = document.getElementById('ai-chat-panel');
     const toggleBtn = document.getElementById('btn-toggle-chat');
     if (panel) {
-      panel.classList.remove('open');
+      this.setDrawerOpen(panel, false);
       if (toggleBtn) toggleBtn.classList.remove('active');
     }
   }

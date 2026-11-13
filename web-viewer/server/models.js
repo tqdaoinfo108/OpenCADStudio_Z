@@ -1,3 +1,4 @@
+import { validateAndSanitizeFloorPlan } from '../js/architectural_layout.js';
 /**
  * models.js
  * OpenCADStudio_Z / Nếp Nhà - Web Viewer Backend
@@ -25,11 +26,23 @@ export class FloorDocument {
     this.entities = Array.isArray(data.entities) ? data.entities : [];
     this.rooms = Array.isArray(data.rooms) ? data.rooms : (data.aiAnalysis?.rooms || []);
     this.furniture = Array.isArray(data.furniture) ? data.furniture : [];
+    this.sanitary = Array.isArray(data.sanitary) ? data.sanitary : [];
+    this.doors = Array.isArray(data.doors) ? data.doors : [];
+    this.windows = Array.isArray(data.windows) ? data.windows : [];
+    this.stairs = Array.isArray(data.stairs) ? data.stairs : [];
     this.slabs = Array.isArray(data.slabs) ? data.slabs : [];
     this.exteriorWalls = Array.isArray(data.exteriorWalls) ? data.exteriorWalls : [];
     this.interiorWalls = Array.isArray(data.interiorWalls) ? data.interiorWalls : [];
     this.aiAnalysis = data.aiAnalysis || null;
     this.metadata = data.metadata && typeof data.metadata === 'object' ? { ...data.metadata } : {};
+    this.sanitizeLayout();
+  }
+
+  sanitizeLayout() {
+    const { rooms, furniture, sanitary } = validateAndSanitizeFloorPlan(this);
+    this.rooms = rooms;
+    this.furniture = furniture;
+    this.sanitary = sanitary;
   }
 
   /**
@@ -76,6 +89,10 @@ export class FloorDocument {
       entities: this.entities,
       rooms: this.rooms,
       furniture: this.furniture,
+      sanitary: this.sanitary,
+      doors: this.doors,
+      windows: this.windows,
+      stairs: this.stairs,
       slabs: this.slabs,
       exteriorWalls: this.exteriorWalls,
       interiorWalls: this.interiorWalls,
@@ -185,6 +202,18 @@ export class ProjectDocument {
     const floor = this.getFloor(floorId);
     if (!floor) return null;
     floor.aiAnalysis = analysis;
+    if (analysis.metadata?.roomGrid) {
+      floor.metadata.roomGrid = true;
+      floor.rooms = analysis.rooms;
+      floor.furniture = analysis.furniture;
+      floor.doors = analysis.doors || [];
+      floor.windows = analysis.windows || [];
+      floor.stairs = analysis.stairs || [];
+      floor.interiorWalls = [];
+      floor.sanitary = [];
+      floor.sanitizeLayout();
+      floor.aiAnalysis = { ...analysis, rooms: floor.rooms, furniture: floor.furniture };
+    }
     this.metadata.updatedAt = new Date().toISOString();
     return floor;
   }
@@ -327,6 +356,13 @@ export class FurnitureAsset {
    * @param {string} data.asset_id
    * @param {string} data.name
    * @param {string} [data.category='living_room']
+   * @param {string} [data.asset_type='model'] - 'model' | 'real'
+   * @param {string} [data.image_url='']
+   * @param {string} [data.thumbnail_url='']
+   * @param {string} [data.source_image_url='']
+   * @param {string} [data.variant_of='']
+   * @param {number} [data.aspect_ratio=1.0]
+   * @param {string} [data.description='']
    * @param {Array<string>|string} [data.room_types=[]]
    * @param {string} [data.placement_type='floor_wall_backed']
    * @param {Object|string} [data.dimensions={}]
@@ -341,6 +377,13 @@ export class FurnitureAsset {
     this.asset_id = String(data.asset_id || data.id || `asset_${Date.now()}`);
     this.name = String(data.name || 'Nội thất mẫu');
     this.category = String(data.category || 'living_room');
+    this.asset_type = String(data.asset_type || (this.asset_id.startsWith('real_') ? 'real' : 'model'));
+    this.image_url = String(data.image_url || '');
+    this.thumbnail_url = String(data.thumbnail_url || data.image_url || '');
+    this.source_image_url = String(data.source_image_url || '');
+    this.variant_of = String(data.variant_of || '');
+    this.aspect_ratio = typeof data.aspect_ratio === 'number' ? data.aspect_ratio : 1.0;
+    this.description = String(data.description || '');
 
     if (Array.isArray(data.room_types)) {
       this.room_types = data.room_types;
@@ -368,6 +411,16 @@ export class FurnitureAsset {
       this.dimensions = { width: 1.0, depth: 1.0, height: 1.0 };
     }
 
+    this.size_x = typeof data.size_x === 'number'
+      ? data.size_x
+      : (typeof this.dimensions?.width === 'number' ? this.dimensions.width : 1.0);
+    this.size_y = typeof data.size_y === 'number'
+      ? data.size_y
+      : (typeof this.dimensions?.height === 'number' ? this.dimensions.height : 1.0);
+    this.size_z = typeof data.size_z === 'number'
+      ? data.size_z
+      : (typeof this.dimensions?.depth === 'number' ? this.dimensions.depth : 1.0);
+
     if (Array.isArray(data.tags)) {
       this.tags = data.tags;
     } else if (typeof data.tags === 'string') {
@@ -380,7 +433,10 @@ export class FurnitureAsset {
       this.tags = [];
     }
 
-    this.glb_path = String(data.glb_path || data.url || `/assets/models/${this.asset_id}.glb`);
+    const defaultGlb = this.asset_type === 'real'
+      ? `/assets/models/real/${this.asset_id}.glb`
+      : `/assets/models/${this.asset_id}.glb`;
+    this.glb_path = String(data.glb_path || data.url || defaultGlb);
     this.is_builtin = (data.is_builtin === 0 || data.is_builtin === false) ? 0 : 1;
     this.created_at = String(data.created_at || data.createdAt || new Date().toISOString());
   }
@@ -391,9 +447,19 @@ export class FurnitureAsset {
       asset_id: this.asset_id,
       name: this.name,
       category: this.category,
+      asset_type: this.asset_type,
+      image_url: this.image_url,
+      thumbnail_url: this.thumbnail_url,
+      source_image_url: this.source_image_url,
+      variant_of: this.variant_of,
+      aspect_ratio: this.aspect_ratio,
+      description: this.description,
       room_types: this.room_types,
       placement_type: this.placement_type,
       dimensions: this.dimensions,
+      size_x: this.size_x,
+      size_y: this.size_y,
+      size_z: this.size_z,
       tags: this.tags,
       glb_path: this.glb_path,
       is_builtin: this.is_builtin,

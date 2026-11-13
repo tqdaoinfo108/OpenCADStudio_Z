@@ -1,3 +1,4 @@
+import { buildRoomPartitions, furnitureType, validateAndSanitizeFloorPlan } from './architectural_layout.js';
 /**
  * cad_bim_pipeline.js
  * OpenCADStudio_Z: Interactive 3D Architectural Dollhouse Web Viewer
@@ -48,6 +49,8 @@ export const ASSET_CATALOG_IDS = [
 ];
 
 export const ASSET_CATALOG_SET = new Set(ASSET_CATALOG_IDS);
+const isFurnitureAssetId = id => ASSET_CATALOG_SET.has(id) ||
+  typeof id === 'string' && /^(?:generated|custom)_[a-z0-9_-]+$/i.test(id);
 
 export class CadBimPipeline {
   constructor() {
@@ -259,6 +262,8 @@ export class CadBimPipeline {
     for (let floorIdx = 0; floorIdx < projectData.floors.length; floorIdx++) {
       const floorRaw = projectData.floors[floorIdx];
       const floorHeight = floorRaw.height || 3.6;
+      const hasRoomGrid = floorRaw.metadata?.roomGrid === true ||
+        (floorRaw.rooms || []).some(room => Number.isFinite(room.x_min));
       const bimFloor = {
         id: floorRaw.id,
         name: floorRaw.name,
@@ -275,7 +280,8 @@ export class CadBimPipeline {
         furniture: [],
         sanitary: [],
         rooms: [],
-        dimensions: []
+        dimensions: [],
+        metadata: { ...floorRaw.metadata, roomGrid: hasRoomGrid }
       };
 
       const entities = floorRaw.entities || [];
@@ -319,11 +325,13 @@ export class CadBimPipeline {
         bimFloor.slabs.push({
           type: 'slab',
           minX, maxX, minY, maxY,
-          thickness: 0.178,
+          thickness: 0.18,
           elevation: floorRaw.elevation ?? 0,
           hasStairOpening: floorIdx > 0 || floorRaw.id !== 'floor_1'
         });
 
+      }
+      if (!bimFloor.exteriorWalls.length) {
         bimFloor.exteriorWalls.push(
           {
             id: `${floorRaw.id}_wall_south`,
@@ -369,9 +377,23 @@ export class CadBimPipeline {
       }
 
       const slabBounds = { minX, maxX, minY, maxY };
+      for (const wall of bimFloor.exteriorWalls) wall.isExterior = true;
+      const terrace = floorRaw.rooms?.find(room => room.type === 'terrace' && room.isOutdoor);
+      if (hasRoomGrid && terrace?.bounds?.maxY === maxY) {
+        for (const wall of [...bimFloor.exteriorWalls]) {
+          if (wall.orientation === 'north') wall.height = 1.05;
+          if (wall.orientation === 'east' || wall.orientation === 'west') {
+            const end = wall.p2;
+            wall.p2 = { ...end, y: terrace.bounds.minY };
+            bimFloor.exteriorWalls.push({ ...wall, id: wall.id + '_terrace', p1: wall.p2, p2: end, height: 1.05 });
+          }
+        }
+      }
 
       // 2. Interior Walls (A-WALL-INTR) with double-line deduplication
-      if (floorRaw.interiorWalls && floorRaw.interiorWalls.length > 0) {
+      if (hasRoomGrid && !floorRaw.interiorWalls?.length) {
+        bimFloor.interiorWalls = buildRoomPartitions(floorRaw.rooms || [], slabBounds).walls;
+      } else if (floorRaw.interiorWalls && floorRaw.interiorWalls.length > 0) {
         bimFloor.interiorWalls.push(...floorRaw.interiorWalls);
       } else {
         const intrLines = entities.filter(e => e.layer === 'A-WALL-INTR' && e.points && e.points.length > 0);
@@ -391,6 +413,13 @@ export class CadBimPipeline {
         }
         bimFloor.interiorWalls = this.deduplicateParallelWalls(rawSegments, 0.25);
       }
+
+      bimFloor.interiorWalls = bimFloor.interiorWalls.map(wall => ({
+        ...wall, height: Math.min(2.7, wall.height || 2.6), isExterior: false
+      }));
+
+      // 2.5 Clean wall intersections & snap T-junctions / L-corners
+      this.cleanWallIntersections(bimFloor.exteriorWalls, bimFloor.interiorWalls, slabBounds);
 
       // 3. Columns (A-COLS)
       if (floorRaw.columns && floorRaw.columns.length > 0) {
@@ -461,8 +490,14 @@ export class CadBimPipeline {
         }
       }
 
-      // Attach stairwell cutout box to upper floor slabs so stairs pass cleanly through
-      if ((floorIdx > 0 || floorRaw.id !== 'floor_1') && bimFloor.stairs.length > 0) {
+      // Prefer the opening projected from the staircase directly below this slab.
+      if (floorRaw.metadata?.stairOpening) {
+        for (const slab of bimFloor.slabs) {
+          if (slab.stairOpening) continue;
+          slab.hasStairOpening = true;
+          slab.stairOpening = { ...floorRaw.metadata.stairOpening };
+        }
+      } else if (!hasRoomGrid && (floorIdx > 0 || floorRaw.id !== 'floor_1') && bimFloor.stairs.length > 0) {
         const st = bimFloor.stairs[0];
         const voidBox = {
           minX: st.minX ?? (st.x - st.width / 2),
@@ -588,11 +623,13 @@ export class CadBimPipeline {
           const rotation = typeof f.rotation === 'number'
             ? f.rotation
             : this.computeWallAlignedRotation(f.cx, f.cy, f.width || 1.2, f.depth || 0.8, bimFloor.exteriorWalls, bimFloor.interiorWalls, slabBounds);
-          const asset_id = f.asset_id && ASSET_CATALOG_SET.has(f.asset_id)
+          const asset_id = isFurnitureAssetId(f.asset_id)
             ? f.asset_id
             : this.resolveAssetId(f.type, f.name, roomName, f.layer);
           const item = { ...f, room: roomName, asset_id, rotation };
-          bimFloor.furniture.push(item);
+          const type = furnitureType(item);
+          const target = ['toilet', 'lavabo', 'shower', 'bathtub'].includes(type) ? bimFloor.sanitary : bimFloor.furniture;
+          target.push(item);
         }
       }
       if (floorRaw.sanitary && floorRaw.sanitary.length > 0) {
@@ -601,7 +638,7 @@ export class CadBimPipeline {
           const rotation = typeof s.rotation === 'number'
             ? s.rotation
             : this.computeWallAlignedRotation(s.cx, s.cy, s.width || 0.8, s.depth || 0.7, bimFloor.exteriorWalls, bimFloor.interiorWalls, slabBounds);
-          const asset_id = s.asset_id && ASSET_CATALOG_SET.has(s.asset_id)
+          const asset_id = isFurnitureAssetId(s.asset_id)
             ? s.asset_id
             : this.resolveAssetId(s.type, s.name, roomName, s.layer || 'A-SANR');
           const item = { ...s, room: roomName, asset_id, rotation };
@@ -610,22 +647,26 @@ export class CadBimPipeline {
       }
 
       if (bimFloor.furniture.length === 0 && bimFloor.sanitary.length === 0) {
-        const furnEnts = entities.filter(e => (e.layer === 'A-FURN' || e.layer === 'A-SANR') && e.points && e.points.length >= 4);
+        const furnEnts = entities.filter(e => (e.layer === 'A-FURN' || e.layer === 'A-SANR') && Array.isArray(e.points) && e.points.length >= 2);
         const rawRects = furnEnts.map(f => {
-          const xs = f.points.map(p => p.x);
-          const ys = f.points.map(p => p.y);
+          const validPts = f.points.filter(p => p && typeof p.x === 'number' && !Number.isNaN(p.x) && typeof p.y === 'number' && !Number.isNaN(p.y));
+          if (validPts.length === 0) return null;
+          const xs = validPts.map(p => p.x);
+          const ys = validPts.map(p => p.y);
           const rMinX = Math.min(...xs);
           const rMaxX = Math.max(...xs);
           const rMinY = Math.min(...ys);
           const rMaxY = Math.max(...ys);
+          const w = Math.max(0.4, rMaxX - rMinX);
+          const d = Math.max(0.4, rMaxY - rMinY);
           return {
             layer: f.layer,
             minX: rMinX,
             maxX: rMaxX,
             minY: rMinY,
             maxY: rMaxY,
-            width: rMaxX - rMinX,
-            depth: rMaxY - rMinY,
+            width: w,
+            depth: d,
             cx: (rMinX + rMaxX) / 2,
             cy: (rMinY + rMaxY) / 2,
             asset_id: f.asset_id || null,
@@ -635,7 +676,7 @@ export class CadBimPipeline {
             rotation: f.rotation ?? null,
             material: f.material || null
           };
-        });
+        }).filter(Boolean);
 
         const consolidatedRects = this.consolidateFurnitureRects(rawRects);
 
@@ -663,12 +704,14 @@ export class CadBimPipeline {
       }
 
       // Enrich floor with additional architectural openings and furnishings if sparse
-      this.enrichFloorBim(bimFloor, floorIdx, slabBounds, projectData);
+      if (!bimFloor.metadata?.roomGrid) this.enrichFloorBim(bimFloor, floorIdx, slabBounds, projectData);
+      const sanitized = validateAndSanitizeFloorPlan(bimFloor);
+      Object.assign(bimFloor, sanitized);
 
       // Register all floor items in sceneGraph.furnitureCatalog with unique names per floor
       const usedNames = new Map();
       for (const item of [...bimFloor.furniture, ...bimFloor.sanitary]) {
-        if (!item.asset_id || !ASSET_CATALOG_SET.has(item.asset_id)) {
+        if (!isFurnitureAssetId(item.asset_id)) {
           item.asset_id = this.resolveAssetId(item.type, item.name, item.room, item.layer);
         }
         if (typeof item.rotation !== 'number' || Number.isNaN(item.rotation)) {
@@ -728,6 +771,10 @@ export class CadBimPipeline {
         }
       }
 
+      // 9. Architectural Grid (A-GRID) & Dimensions (A-DIMS)
+      bimFloor.gridAxes = this.computeArchitecturalGrid(bimFloor, slabBounds);
+      bimFloor.dimensions = this.computeArchitecturalDimensions(bimFloor, slabBounds, bimFloor.gridAxes);
+
       sceneGraph.floors.push(bimFloor);
     }
 
@@ -736,6 +783,185 @@ export class CadBimPipeline {
     }
 
     return sceneGraph;
+  }
+
+  /**
+   * Wall Intersection Cleanup:
+   * Detects T-junctions, L-corners and X-junctions between interior walls and other walls.
+   * Snaps wall endpoints cleanly onto intersecting centerlines and trims overshoots.
+   */
+  cleanWallIntersections(exteriorWalls = [], interiorWalls = [], slabBounds = null, snapTolerance = 0.28) {
+    const allWalls = [...exteriorWalls, ...interiorWalls];
+    let snappedCount = 0;
+
+    for (const iw of interiorWalls) {
+      if (!iw.p1 || !iw.p2) continue;
+      for (const pt of [iw.p1, iw.p2]) {
+        for (const other of allWalls) {
+          if (other === iw || !other.p1 || !other.p2) continue;
+          const dx = other.p2.x - other.p1.x;
+          const dy = other.p2.y - other.p1.y;
+          const lenSq = dx * dx + dy * dy;
+          if (lenSq < 1e-6) continue;
+
+          // Projection parameter t
+          const t = ((pt.x - other.p1.x) * dx + (pt.y - other.p1.y) * dy) / lenSq;
+          if (t >= -0.05 && t <= 1.05) {
+            const clampedT = Math.max(0, Math.min(1, t));
+            const projX = other.p1.x + clampedT * dx;
+            const projY = other.p1.y + clampedT * dy;
+            const dist = Math.hypot(pt.x - projX, pt.y - projY);
+
+            if (dist > 1e-4 && dist <= snapTolerance) {
+              pt.x = Math.round(projX * 1000) / 1000;
+              pt.y = Math.round(projY * 1000) / 1000;
+              snappedCount++;
+            }
+          }
+        }
+      }
+    }
+    return snappedCount;
+  }
+
+  /**
+   * Compute Architectural Grid Axes (A-GRID)
+   * Clusters column centers and building extents into standardized numeric (1, 2, 3...)
+   * and alphabetic (A, B, C...) grid axes with Dash-dot linetype.
+   */
+  computeArchitecturalGrid(bimFloor, slabBounds = { minX: 0, maxX: 10, minY: 0, maxY: 15 }) {
+    const xCoords = [];
+    const yCoords = [];
+
+    if (bimFloor.columns && bimFloor.columns.length > 0) {
+      for (const c of bimFloor.columns) {
+        if (typeof c.x === 'number') xCoords.push(c.x);
+        if (typeof c.y === 'number') yCoords.push(c.y);
+      }
+    }
+
+    if (xCoords.length < 2) {
+      xCoords.push(slabBounds.minX, slabBounds.maxX);
+    }
+    if (yCoords.length < 2) {
+      yCoords.push(slabBounds.minY, slabBounds.maxY);
+    }
+
+    function cluster(vals) {
+      vals.sort((a, b) => a - b);
+      const groups = [];
+      for (const v of vals) {
+        if (groups.length === 0 || v - groups[groups.length - 1].avg > 0.35) {
+          groups.push({ sum: v, count: 1, avg: v });
+        } else {
+          const last = groups[groups.length - 1];
+          last.sum += v;
+          last.count += 1;
+          last.avg = last.sum / last.count;
+        }
+      }
+      return groups.map(g => Math.round(g.avg * 100) / 100);
+    }
+
+    const uniqueX = cluster(xCoords);
+    const uniqueY = cluster(yCoords);
+
+    const xAxes = uniqueX.map((x, idx) => ({
+      id: `axis_x_${idx + 1}`,
+      label: (idx + 1).toString(),
+      type: 'X',
+      coord: x
+    }));
+
+    const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+    const yAxes = uniqueY.map((y, idx) => ({
+      id: `axis_y_${letters[idx % letters.length]}`,
+      label: letters[idx % letters.length] + (idx >= letters.length ? Math.floor(idx / letters.length) : ''),
+      type: 'Y',
+      coord: y
+    }));
+
+    return { xAxes, yAxes };
+  }
+
+  /**
+   * Compute Architectural Dimensions (A-DIMS)
+   * Generates bay-by-bay dimensions and total building dimensions in millimeters.
+   */
+  computeArchitecturalDimensions(bimFloor, slabBounds, gridAxes) {
+    const dims = [];
+    const xAxes = gridAxes.xAxes || [];
+    const yAxes = gridAxes.yAxes || [];
+
+    // X-bay dimensions
+    for (let i = 0; i < xAxes.length - 1; i++) {
+      const a = xAxes[i], b = xAxes[i + 1];
+      const dist = Math.abs(b.coord - a.coord);
+      if (dist > 0.1) {
+        dims.push({
+          id: `dim_x_${a.label}_${b.label}`,
+          axis: 'X',
+          type: 'BAY',
+          start: a.coord,
+          end: b.coord,
+          distanceM: Math.round(dist * 100) / 100,
+          distanceMm: Math.round(dist * 1000),
+          label: `${Math.round(dist * 1000)}`
+        });
+      }
+    }
+
+    // X total dimension
+    if (xAxes.length >= 2) {
+      const first = xAxes[0], last = xAxes[xAxes.length - 1];
+      const totalDist = Math.abs(last.coord - first.coord);
+      dims.push({
+        id: `dim_x_total`,
+        axis: 'X',
+        type: 'TOTAL',
+        start: first.coord,
+        end: last.coord,
+        distanceM: Math.round(totalDist * 100) / 100,
+        distanceMm: Math.round(totalDist * 1000),
+        label: `${Math.round(totalDist * 1000)}`
+      });
+    }
+
+    // Y-bay dimensions
+    for (let j = 0; j < yAxes.length - 1; j++) {
+      const a = yAxes[j], b = yAxes[j + 1];
+      const dist = Math.abs(b.coord - a.coord);
+      if (dist > 0.1) {
+        dims.push({
+          id: `dim_y_${a.label}_${b.label}`,
+          axis: 'Y',
+          type: 'BAY',
+          start: a.coord,
+          end: b.coord,
+          distanceM: Math.round(dist * 100) / 100,
+          distanceMm: Math.round(dist * 1000),
+          label: `${Math.round(dist * 1000)}`
+        });
+      }
+    }
+
+    // Y total dimension
+    if (yAxes.length >= 2) {
+      const first = yAxes[0], last = yAxes[yAxes.length - 1];
+      const totalDist = Math.abs(last.coord - first.coord);
+      dims.push({
+        id: `dim_y_total`,
+        axis: 'Y',
+        type: 'TOTAL',
+        start: first.coord,
+        end: last.coord,
+        distanceM: Math.round(totalDist * 100) / 100,
+        distanceMm: Math.round(totalDist * 1000),
+        label: `${Math.round(totalDist * 1000)}`
+      });
+    }
+
+    return dims;
   }
 
   /**
@@ -1624,6 +1850,146 @@ export class CadBimPipeline {
   }
 
   /**
+   * Semantic Bounding Box Collision Check & Auto-Relocation for TV units and wall-mounted objects.
+   * Guarantees that TV units NEVER intersect or occlude windows.
+   */
+  resolveTvWindowCollisions(furniture, windows = [], slab = null) {
+    if (!Array.isArray(furniture) || !Array.isArray(windows) || windows.length === 0) return 0;
+    const slabBounds = slab || { minX: 0, maxX: 10, minY: 0, maxY: 15 };
+    let resolvedCount = 0;
+
+    for (const item of furniture) {
+      const isTv = item.asset_id === 'tv_cabinet_wall_unit' ||
+        (item.name && item.name.toLowerCase().includes('tivi')) ||
+        (item.name && item.name.toLowerCase().includes('kệ tv')) ||
+        item.type === 'tv_console';
+
+      if (!isTv) continue;
+
+      if (typeof item.cx !== 'number' || Number.isNaN(item.cx)) item.cx = (slabBounds.minX + slabBounds.maxX) / 2;
+      if (typeof item.cy !== 'number' || Number.isNaN(item.cy)) item.cy = (slabBounds.minY + slabBounds.maxY) / 2;
+
+      const rot = item.rotation || 0;
+      const isRot = Math.abs(Math.sin(rot)) > 0.7;
+      const w = item.width || 2.2;
+      const d = item.depth || 0.46;
+      const spanX = isRot ? d : w;
+      const spanY = isRot ? w : d;
+      const halfX = spanX / 2;
+      const halfY = spanY / 2;
+
+      const checkCollision = (cx, cy, currentIsRot) => {
+        const hX = (currentIsRot ? d : w) / 2;
+        const hY = (currentIsRot ? w : d) / 2;
+        const box = {
+          minX: cx - hX,
+          maxX: cx + hX,
+          minY: cy - hY,
+          maxY: cy + hY
+        };
+
+        for (const win of windows) {
+          if (!win.p1 || !win.p2) continue;
+          const wMinX = Math.min(win.p1.x, win.p2.x);
+          const wMaxX = Math.max(win.p1.x, win.p2.x);
+          const wMinY = Math.min(win.p1.y, win.p2.y);
+          const wMaxY = Math.max(win.p1.y, win.p2.y);
+          const isWinVert = Math.abs(win.p2.x - win.p1.x) < Math.abs(win.p2.y - win.p1.y);
+
+          // 1. Direct AABB overlap check
+          const aabbOverlap = !(box.maxX < wMinX - 0.25 || box.minX > wMaxX + 0.25 || box.maxY < wMinY - 0.25 || box.minY > wMaxY + 0.25);
+          if (aabbOverlap) return true;
+
+          // 2. Same-wall sightline occlusion check (near wall plane and overlapping along wall)
+          if (currentIsRot && isWinVert) {
+            const distToWall = Math.abs(cx - (win.p1.x + win.p2.x) / 2);
+            if (distToWall < 1.25) {
+              const yOverlap = !(box.maxY < wMinY - 0.15 || box.minY > wMaxY + 0.15);
+              if (yOverlap) return true;
+            }
+          } else if (!currentIsRot && !isWinVert) {
+            const distToWall = Math.abs(cy - (win.p1.y + win.p2.y) / 2);
+            if (distToWall < 1.25) {
+              const xOverlap = !(box.maxX < wMinX - 0.15 || box.minX > wMaxX + 0.15);
+              if (xOverlap) return true;
+            }
+          }
+        }
+        return false;
+      };
+
+      if (!checkCollision(item.cx, item.cy, isRot)) continue;
+
+      // Strategy 1: Slide along current wall
+      let resolved = false;
+      const deltas = [-1.4, 1.4, -2.2, 2.2, -3.0, 3.0, -3.8, 3.8, -4.6, 4.6];
+      for (const delta of deltas) {
+        const testCx = isRot ? item.cx : item.cx + delta;
+        const testCy = isRot ? item.cy + delta : item.cy;
+        if (testCx - halfX < slabBounds.minX + 0.05 || testCx + halfX > slabBounds.maxX - 0.05) continue;
+        if (testCy - halfY < slabBounds.minY + 0.05 || testCy + halfY > slabBounds.maxY - 0.05) continue;
+        if (!checkCollision(testCx, testCy, isRot)) {
+          item.cx = Math.round(testCx * 100) / 100;
+          item.cy = Math.round(testCy * 100) / 100;
+          resolved = true;
+          resolvedCount++;
+          break;
+        }
+      }
+
+      // Strategy 2: Place on opposite wall facing into the room
+      if (!resolved) {
+        let oppCx = item.cx;
+        let oppCy = item.cy;
+        let oppRot = item.rotation || 0;
+        let oppIsRot = isRot;
+
+        if (isRot) {
+          if (item.cx > (slabBounds.minX + slabBounds.maxX) / 2) {
+            oppCx = slabBounds.minX + halfX + 0.15;
+            oppRot = Math.PI / 2;
+          } else {
+            oppCx = slabBounds.maxX - halfX - 0.15;
+            oppRot = -Math.PI / 2;
+          }
+        } else {
+          if (item.cy > (slabBounds.minY + slabBounds.maxY) / 2) {
+            oppCy = slabBounds.minY + halfY + 0.15;
+            oppRot = 0;
+          } else {
+            oppCy = slabBounds.maxY - halfY - 0.15;
+            oppRot = Math.PI;
+          }
+        }
+
+        if (!checkCollision(oppCx, oppCy, oppIsRot)) {
+          item.cx = Math.round(oppCx * 100) / 100;
+          item.cy = Math.round(oppCy * 100) / 100;
+          item.rotation = oppRot;
+          resolved = true;
+          resolvedCount++;
+        } else {
+          for (const delta of deltas) {
+            const testCx = oppIsRot ? oppCx : oppCx + delta;
+            const testCy = oppIsRot ? oppCy + delta : oppCy;
+            if (testCx - halfX < slabBounds.minX + 0.05 || testCx + halfX > slabBounds.maxX - 0.05) continue;
+            if (testCy - halfY < slabBounds.minY + 0.05 || testCy + halfY > slabBounds.maxY - 0.05) continue;
+            if (!checkCollision(testCx, testCy, oppIsRot)) {
+              item.cx = Math.round(testCx * 100) / 100;
+              item.cy = Math.round(testCy * 100) / 100;
+              item.rotation = oppRot;
+              resolved = true;
+              resolvedCount++;
+              break;
+            }
+          }
+        }
+      }
+    }
+    return resolvedCount;
+  }
+
+  /**
    * Enrich any sparse floor with complete architectural windows, doors, and
    * room-appropriate 3D .glb furniture so every floor of every project looks richly detailed.
    */
@@ -1889,14 +2255,16 @@ export class CadBimPipeline {
           });
         }
         if (!hasAssetInRoom(rm.name, 'tv_cabinet_wall_unit')) {
+          const roomCenterX = typeof rm.x === 'number' && !Number.isNaN(rm.x) ? rm.x : (minX + maxX) / 2;
+          const roomCenterY = typeof rm.y === 'number' && !Number.isNaN(rm.y) ? rm.y : (minY + maxY) / 2;
           addItem({
             asset_id: 'tv_cabinet_wall_unit',
             type: 'tv_console',
             name: 'Kệ Tivi gỗ Óc chó Phòng ngủ Master',
             layer: 'A-FURN',
             room: rm.name,
-            cx: rm.x + 2.2,
-            cy: rm.y,
+            cx: Math.min(maxX - 0.5, roomCenterX + 2.2),
+            cy: roomCenterY,
             width: 2.1,
             depth: 0.46,
             height: 1.6,

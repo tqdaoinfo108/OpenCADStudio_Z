@@ -1,9 +1,9 @@
 {
   "version": "2.0.0",
   "generator": "OpenCADStudio_Z Nếp Nhà Asset Baker",
-  "generatedAt": "2026-11-12T07:09:17.994Z",
-  "totalAssets": 38,
-  "totalByteLength": 2969756,
+  "generatedAt": "2026-11-12T15:04:33.447Z",
+  "totalAssets": 48,
+  "totalByteLength": 4478056,
   "legacyTypeMap": {
     "sofa_sectional": "sofa_l_modern",
     "sofa": "sofa_l_modern",
@@ -56,7 +56,7 @@
       "asset_id": "sofa_l_modern",
       "name": "Sofa góc chữ L hiện đại",
       "category": "living_room",
-      "url": "/assets/models/sofa_l_modern.glb",
+      "url": "/assets/models/sofa_l_modern.glb?v=fca786fb3727",
       "file": "sofa_l_modern.glb",
       "legacyTypes": [
         "sofa_sectional",
@@ -66,12 +66,15 @@
         "width": 2.65,
         "depth": 1.65,
         "height": 0.85,
-        "nativeWidth": 2.756,
-        "nativeDepth": 1.716,
+        "nativeWidth": 2.65,
+        "nativeDepth": 1.65,
         "nativeHeight": 0.85
       },
-      "meshCount": 4,
-      "byteLength": 168724,
+      "size_x": 2.65,
+      "size_y": 0.85,
+      "size_z": 1.65,
+      "meshCount": 8,
+      "byteLength": 185980,
       "hasContactShadow": true
     },
     {
@@ -79,7 +82,7 @@
       "asset_id": "sofa_straight_3seat",
       "name": "Sofa văng 3 chỗ",
       "category": "living_room",
-      "url": "/assets/models/sofa_straight_3seat.glb",
+      "url": "/assets/models/sofa_straight_3seat.glb?v=64c962561703",
       "file": "sofa_straight_3seat.glb",
       "legacyTypes": [
         "sofa_3seat"
@@ -88,12 +91,15 @@
         "width": 2.2,
         "depth": 0.92,
         "height": 0.84,
-        "nativeWidth": 2.288,
-        "nativeDepth": 0.985,
+        "nativeWidth": 2.2,
+        "nativeDepth": 0.92,
         "nativeHeight": 0.84
       },
-      "meshCount": 4,
-      "byteLength": 166588,
+      "size_x": 2.2,
+      "size_y": 0.84,
+      "size_z": 0.92,
+      "meshCount": 7,
+      "byteLength": 182800,
       "hasContactShadow": true
     },
     {
@@ -101,7 +107,7 @@
       "asset_id": "armchair_lounge",
       "name": "Ghế bành thư giãn",
       "category": "living_room",
-      "url": "/assets/models/armchair_lounge.glb",
+      "url": "/assets/models/armchair_lounge.glb?v=60c1878106c0",
       "file": "armchair_lounge.glb",
       "legacyTypes": [
         "armchair",
@@ -111,12 +117,15 @@
         "width": 0.84,
         "depth": 0.82,
         "height": 0.78,
-        "nativeWidth": 0.874,
-        "nativeDepth": 0.853,
-        "nativeHeight": 0.86
+        "nativeWidth": 0.84,
+        "nativeDepth": 0.82,
+        "nativeHeight": 0.78
       },
-      "meshCount": 4,
-      "byteLength": 111064,
+      "size_x": 0.84,
+      "size_y": 0.78,
+      "size_z": 0.82,
+      "meshCount": 6,
+      "byteLength": 126480,
       "hasContactShadow": true
     },
     {
@@ -124,7 +133,7 @@
       "asset_id": "coffee_table_set",
       "name": "Bàn trà đôi mặt đá Carrara",
       "category": "living_room",
-      "url": "/assets/models/coffee_table_set.glb",
+      "url": "/assets/models/coffee_table_set.glb?v=f0194d571aaf",
       "file": "coffee_table_set.glb",
       "legacyTypes": [
         "coffee_table"
@@ -133,12 +142,15 @@
         "width": 1.28,
         "depth": 0.72,
         "height": 0.48,
-        "nativeWidth": 1.331,
-        "nativeDepth": 0.749,
-        "nativeHeight": 0.678
+        "nativeWidth": 1.28,
+        "nativeDepth": 0.72,
+        "nativeHeight": 0.48
       },
-      "meshCount": 4,
-      "byteLength": 120984,
+      "size_x": 1.28,
+      "size_y": 0.48,
+      "size_z": 0.72,
+      "meshCount": 9,
+      "byteLength": 140884,
       "hasContactShadow": true
     },
     {
@@ -146,7 +158,7 @@
       "asset_id": "tv_cabinet_wall_unit",
       "name": "Kệ TV & vách lam gỗ OLED 75\"",
       "category": "living_room",
-      "url": "/assets/models/tv_cabinet_wall_unit.glb",
+      "url": "/assets/models/tv_cabinet_wall_unit.glb?v=6276fb323462",
       "file": "tv_cabinet_wall_unit.glb",
       "legacyTypes": [
         "tv_console"
@@ -155,12 +167,15 @@
         "width": 2.2,
         "depth": 0.46,
         "height": 2.1,
-        "nativeWidth": 2.288,
-        "nativeDepth": 0.496,
+        "nativeWidth": 2.2,
+        "nativeDepth": 0.46,
         "nativeHeight": 2.1
       },
-      "meshCount": 4,
-      "byteLength": 136096,
+      "size_x": 2.2,
+      "size_y": 2.1,
+      "size_z": 0.46,
+      "meshCount": 10,
+      "byteLength": 158268,
       "hasContactShadow": true
     },
     {
@@ -168,7 +183,7 @@
       "asset_id": "entrance_shoe_cabinet",
       "name": "Tủ giày sảnh & ghế đôn thay giày",
       "category": "living_room",
-      "url": "/assets/models/entrance_shoe_cabinet.glb",
+      "url": "/assets/models/entrance_shoe_cabinet.glb?v=0f28495cc85b",
       "file": "entrance_shoe_cabinet.glb",
       "legacyTypes": [
         "shoe_cabinet"
@@ -177,12 +192,15 @@
         "width": 1.4,
         "depth": 0.38,
         "height": 1.15,
-        "nativeWidth": 1.456,
-        "nativeDepth": 0.423,
-        "nativeHeight": 1.32
+        "nativeWidth": 1.4,
+        "nativeDepth": 0.38,
+        "nativeHeight": 1.15
       },
-      "meshCount": 4,
-      "byteLength": 117124,
+      "size_x": 1.4,
+      "size_y": 1.15,
+      "size_z": 0.38,
+      "meshCount": 7,
+      "byteLength": 148100,
       "hasContactShadow": true
     },
     {
@@ -190,7 +208,7 @@
       "asset_id": "floor_rug_textured",
       "name": "Thảm dệt trang trí phòng khách",
       "category": "living_room",
-      "url": "/assets/models/floor_rug_textured.glb",
+      "url": "/assets/models/floor_rug_textured.glb?v=29b04b194a29",
       "file": "floor_rug_textured.glb",
       "legacyTypes": [
         "rug"
@@ -199,10 +217,13 @@
         "width": 2.6,
         "depth": 1.8,
         "height": 0.008,
-        "nativeWidth": 2.704,
-        "nativeDepth": 1.872,
-        "nativeHeight": 0.009
+        "nativeWidth": 2.6,
+        "nativeDepth": 1.8,
+        "nativeHeight": 0.008
       },
+      "size_x": 2.6,
+      "size_y": 0.008,
+      "size_z": 1.8,
       "meshCount": 3,
       "byteLength": 31396,
       "hasContactShadow": true
@@ -212,7 +233,7 @@
       "asset_id": "kitchen_system_i",
       "name": "Hệ tủ bếp chữ I mặt đá Carrara",
       "category": "kitchen_dining",
-      "url": "/assets/models/kitchen_system_i.glb",
+      "url": "/assets/models/kitchen_system_i.glb?v=720470a5694f",
       "file": "kitchen_system_i.glb",
       "legacyTypes": [
         "kitchen_i"
@@ -221,12 +242,15 @@
         "width": 2.8,
         "depth": 0.65,
         "height": 2.12,
-        "nativeWidth": 2.912,
-        "nativeDepth": 0.7,
+        "nativeWidth": 2.8,
+        "nativeDepth": 0.65,
         "nativeHeight": 2.12
       },
-      "meshCount": 4,
-      "byteLength": 71100,
+      "size_x": 2.8,
+      "size_y": 2.12,
+      "size_z": 0.65,
+      "meshCount": 10,
+      "byteLength": 111256,
       "hasContactShadow": true
     },
     {
@@ -234,7 +258,7 @@
       "asset_id": "kitchen_system_l",
       "name": "Hệ tủ bếp góc chữ L cao cấp",
       "category": "kitchen_dining",
-      "url": "/assets/models/kitchen_system_l.glb",
+      "url": "/assets/models/kitchen_system_l.glb?v=a3d9429bd368",
       "file": "kitchen_system_l.glb",
       "legacyTypes": [
         "kitchen_cabinet",
@@ -244,12 +268,15 @@
         "width": 2.6,
         "depth": 1.85,
         "height": 2.1,
-        "nativeWidth": 2.704,
-        "nativeDepth": 1.924,
-        "nativeHeight": 2.01
+        "nativeWidth": 2.6,
+        "nativeDepth": 1.85,
+        "nativeHeight": 2.1
       },
-      "meshCount": 4,
-      "byteLength": 83164,
+      "size_x": 2.6,
+      "size_y": 2.1,
+      "size_z": 1.85,
+      "meshCount": 9,
+      "byteLength": 107808,
       "hasContactShadow": true
     },
     {
@@ -257,7 +284,7 @@
       "asset_id": "kitchen_island_bar",
       "name": "Bàn đảo bếp đá cẩm thạch & 3 ghế bar",
       "category": "kitchen_dining",
-      "url": "/assets/models/kitchen_island_bar.glb",
+      "url": "/assets/models/kitchen_island_bar.glb?v=0007cc5c3fce",
       "file": "kitchen_island_bar.glb",
       "legacyTypes": [
         "kitchen_island"
@@ -266,12 +293,15 @@
         "width": 1.85,
         "depth": 0.96,
         "height": 0.9,
-        "nativeWidth": 1.924,
-        "nativeDepth": 0.998,
-        "nativeHeight": 0.965
+        "nativeWidth": 1.85,
+        "nativeDepth": 0.96,
+        "nativeHeight": 0.9
       },
-      "meshCount": 4,
-      "byteLength": 156212,
+      "size_x": 1.85,
+      "size_y": 0.9,
+      "size_z": 0.96,
+      "meshCount": 7,
+      "byteLength": 178076,
       "hasContactShadow": true
     },
     {
@@ -279,7 +309,7 @@
       "asset_id": "fridge_double_door",
       "name": "Tủ lạnh Side-by-Side 2 cánh Inox",
       "category": "kitchen_dining",
-      "url": "/assets/models/fridge_double_door.glb",
+      "url": "/assets/models/fridge_double_door.glb?v=c3c2bdee8a44",
       "file": "fridge_double_door.glb",
       "legacyTypes": [
         "fridge"
@@ -288,12 +318,15 @@
         "width": 0.92,
         "depth": 0.76,
         "height": 1.88,
-        "nativeWidth": 0.96,
-        "nativeDepth": 0.809,
+        "nativeWidth": 0.92,
+        "nativeDepth": 0.76,
         "nativeHeight": 1.88
       },
-      "meshCount": 4,
-      "byteLength": 41008,
+      "size_x": 0.92,
+      "size_y": 1.88,
+      "size_z": 0.76,
+      "meshCount": 5,
+      "byteLength": 42064,
       "hasContactShadow": true
     },
     {
@@ -301,7 +334,7 @@
       "asset_id": "dining_table_6chairs",
       "name": "Bộ bàn ăn 6 ghế bọc nệm",
       "category": "kitchen_dining",
-      "url": "/assets/models/dining_table_6chairs.glb",
+      "url": "/assets/models/dining_table_6chairs.glb?v=5980adc1bb38",
       "file": "dining_table_6chairs.glb",
       "legacyTypes": [
         "dining_table"
@@ -310,12 +343,15 @@
         "width": 1.95,
         "depth": 1.38,
         "height": 0.82,
-        "nativeWidth": 2.028,
-        "nativeDepth": 1.663,
-        "nativeHeight": 1.066
+        "nativeWidth": 1.95,
+        "nativeDepth": 1.38,
+        "nativeHeight": 0.82
       },
-      "meshCount": 4,
-      "byteLength": 127832,
+      "size_x": 1.95,
+      "size_y": 0.82,
+      "size_z": 1.38,
+      "meshCount": 10,
+      "byteLength": 182244,
       "hasContactShadow": true
     },
     {
@@ -323,7 +359,7 @@
       "asset_id": "dining_table_4chairs",
       "name": "Bộ bàn ăn 4 ghế hiện đại",
       "category": "kitchen_dining",
-      "url": "/assets/models/dining_table_4chairs.glb",
+      "url": "/assets/models/dining_table_4chairs.glb?v=23c747dcdc8c",
       "file": "dining_table_4chairs.glb",
       "legacyTypes": [
         "dining_table_small"
@@ -332,12 +368,15 @@
         "width": 1.45,
         "depth": 1.32,
         "height": 0.82,
-        "nativeWidth": 1.508,
-        "nativeDepth": 1.583,
-        "nativeHeight": 0.842
+        "nativeWidth": 1.45,
+        "nativeDepth": 1.32,
+        "nativeHeight": 0.82
       },
-      "meshCount": 4,
-      "byteLength": 110740,
+      "size_x": 1.45,
+      "size_y": 0.82,
+      "size_z": 1.32,
+      "meshCount": 7,
+      "byteLength": 147760,
       "hasContactShadow": true
     },
     {
@@ -345,7 +384,7 @@
       "asset_id": "bed_master_king",
       "name": "Giường ngủ Master King & 2 Tab đầu giường",
       "category": "bedroom",
-      "url": "/assets/models/bed_master_king.glb",
+      "url": "/assets/models/bed_master_king.glb?v=a15ade7cbe18",
       "file": "bed_master_king.glb",
       "legacyTypes": [
         "bed_master",
@@ -355,12 +394,15 @@
         "width": 2.65,
         "depth": 2.15,
         "height": 1.18,
-        "nativeWidth": 2.756,
-        "nativeDepth": 2.236,
+        "nativeWidth": 2.65,
+        "nativeDepth": 2.15,
         "nativeHeight": 1.18
       },
-      "meshCount": 4,
-      "byteLength": 176064,
+      "size_x": 2.65,
+      "size_y": 1.18,
+      "size_z": 2.15,
+      "meshCount": 11,
+      "byteLength": 211304,
       "hasContactShadow": true
     },
     {
@@ -368,7 +410,7 @@
       "asset_id": "bed_queen_modern",
       "name": "Giường ngủ Queen gỗ sồi hiện đại",
       "category": "bedroom",
-      "url": "/assets/models/bed_queen_modern.glb",
+      "url": "/assets/models/bed_queen_modern.glb?v=e27209fc6dd7",
       "file": "bed_queen_modern.glb",
       "legacyTypes": [
         "bed_queen"
@@ -377,12 +419,15 @@
         "width": 2.04,
         "depth": 2.05,
         "height": 1.05,
-        "nativeWidth": 2.122,
-        "nativeDepth": 2.132,
+        "nativeWidth": 2.04,
+        "nativeDepth": 2.05,
         "nativeHeight": 1.05
       },
-      "meshCount": 4,
-      "byteLength": 129068,
+      "size_x": 2.04,
+      "size_y": 1.05,
+      "size_z": 2.05,
+      "meshCount": 8,
+      "byteLength": 133380,
       "hasContactShadow": true
     },
     {
@@ -390,7 +435,7 @@
       "asset_id": "bed_bunk_kids",
       "name": "Giường tầng trẻ em có bậc cầu thang hộp",
       "category": "bedroom",
-      "url": "/assets/models/bed_bunk_kids.glb",
+      "url": "/assets/models/bed_bunk_kids.glb?v=2eb7e3dec40b",
       "file": "bed_bunk_kids.glb",
       "legacyTypes": [
         "bed_bunk"
@@ -399,12 +444,15 @@
         "width": 1.59,
         "depth": 2.05,
         "height": 1.72,
-        "nativeWidth": 1.79,
-        "nativeDepth": 2.132,
+        "nativeWidth": 1.59,
+        "nativeDepth": 2.05,
         "nativeHeight": 1.72
       },
-      "meshCount": 4,
-      "byteLength": 110616,
+      "size_x": 1.59,
+      "size_y": 1.72,
+      "size_z": 2.05,
+      "meshCount": 6,
+      "byteLength": 112772,
       "hasContactShadow": true
     },
     {
@@ -412,7 +460,7 @@
       "asset_id": "wardrobe_tall_glass",
       "name": "Tủ quần áo kịch trần cánh kính sọc",
       "category": "bedroom",
-      "url": "/assets/models/wardrobe_tall_glass.glb",
+      "url": "/assets/models/wardrobe_tall_glass.glb?v=256ad4d60d9b",
       "file": "wardrobe_tall_glass.glb",
       "legacyTypes": [
         "wardrobe"
@@ -421,12 +469,15 @@
         "width": 1.85,
         "depth": 0.6,
         "height": 2.3,
-        "nativeWidth": 1.924,
-        "nativeDepth": 0.642,
+        "nativeWidth": 1.85,
+        "nativeDepth": 0.6,
         "nativeHeight": 2.3
       },
-      "meshCount": 4,
-      "byteLength": 31124,
+      "size_x": 1.85,
+      "size_y": 2.3,
+      "size_z": 0.6,
+      "meshCount": 7,
+      "byteLength": 72320,
       "hasContactShadow": true
     },
     {
@@ -434,7 +485,7 @@
       "asset_id": "work_desk_computer",
       "name": "Bàn làm việc, màn hình máy tính & ghế xoay",
       "category": "bedroom",
-      "url": "/assets/models/work_desk_computer.glb",
+      "url": "/assets/models/work_desk_computer.glb?v=18501149a10c",
       "file": "work_desk_computer.glb",
       "legacyTypes": [
         "desk"
@@ -443,12 +494,15 @@
         "width": 1.4,
         "depth": 1.1,
         "height": 1.68,
-        "nativeWidth": 1.456,
-        "nativeDepth": 1.144,
-        "nativeHeight": 1.69
+        "nativeWidth": 1.4,
+        "nativeDepth": 1.1,
+        "nativeHeight": 1.68
       },
-      "meshCount": 4,
-      "byteLength": 109300,
+      "size_x": 1.4,
+      "size_y": 1.68,
+      "size_z": 1.1,
+      "meshCount": 10,
+      "byteLength": 160584,
       "hasContactShadow": true
     },
     {
@@ -456,7 +510,7 @@
       "asset_id": "dressing_table_mirror",
       "name": "Bàn trang điểm gương tròn LED & ghế đôn",
       "category": "bedroom",
-      "url": "/assets/models/dressing_table_mirror.glb",
+      "url": "/assets/models/dressing_table_mirror.glb?v=40e0c23235b2",
       "file": "dressing_table_mirror.glb",
       "legacyTypes": [
         "dressing_table",
@@ -467,12 +521,15 @@
         "width": 1.1,
         "depth": 0.82,
         "height": 1.52,
-        "nativeWidth": 1.144,
-        "nativeDepth": 0.853,
-        "nativeHeight": 1.548
+        "nativeWidth": 1.1,
+        "nativeDepth": 0.82,
+        "nativeHeight": 1.52
       },
-      "meshCount": 4,
-      "byteLength": 79444,
+      "size_x": 1.1,
+      "size_y": 1.52,
+      "size_z": 0.82,
+      "meshCount": 8,
+      "byteLength": 96680,
       "hasContactShadow": true
     },
     {
@@ -480,7 +537,7 @@
       "asset_id": "vietnamese_worship_altar",
       "name": "Án gian thờ gỗ gụ, bàn cơm & Trúc chỉ",
       "category": "worship_rooftop",
-      "url": "/assets/models/vietnamese_worship_altar.glb",
+      "url": "/assets/models/vietnamese_worship_altar.glb?v=b36794189e7f",
       "file": "vietnamese_worship_altar.glb",
       "legacyTypes": [
         "altar_table"
@@ -489,12 +546,15 @@
         "width": 1.75,
         "depth": 0.92,
         "height": 1.98,
-        "nativeWidth": 1.9,
-        "nativeDepth": 0.99,
-        "nativeHeight": 2.51
+        "nativeWidth": 1.75,
+        "nativeDepth": 0.92,
+        "nativeHeight": 1.98
       },
-      "meshCount": 4,
-      "byteLength": 113916,
+      "size_x": 1.75,
+      "size_y": 1.98,
+      "size_z": 0.92,
+      "meshCount": 7,
+      "byteLength": 139364,
       "hasContactShadow": true
     },
     {
@@ -502,7 +562,7 @@
       "asset_id": "outdoor_bbq_station",
       "name": "Quầy nướng BBQ sân thượng Inox & mặt đá",
       "category": "worship_rooftop",
-      "url": "/assets/models/outdoor_bbq_station.glb",
+      "url": "/assets/models/outdoor_bbq_station.glb?v=32fbdbb06f72",
       "file": "outdoor_bbq_station.glb",
       "legacyTypes": [
         "bbq"
@@ -511,12 +571,15 @@
         "width": 1.85,
         "depth": 0.68,
         "height": 1.18,
-        "nativeWidth": 1.924,
-        "nativeDepth": 0.736,
-        "nativeHeight": 1.2
+        "nativeWidth": 1.85,
+        "nativeDepth": 0.68,
+        "nativeHeight": 1.18
       },
-      "meshCount": 4,
-      "byteLength": 46056,
+      "size_x": 1.85,
+      "size_y": 1.18,
+      "size_z": 0.68,
+      "meshCount": 5,
+      "byteLength": 61588,
       "hasContactShadow": true
     },
     {
@@ -524,7 +587,7 @@
       "asset_id": "outdoor_patio_set",
       "name": "Bộ bàn trà sân thượng 4 ghế & dù che nắng",
       "category": "worship_rooftop",
-      "url": "/assets/models/outdoor_patio_set.glb",
+      "url": "/assets/models/outdoor_patio_set.glb?v=15ca8cb48d14",
       "file": "outdoor_patio_set.glb",
       "legacyTypes": [
         "patio_set",
@@ -534,12 +597,15 @@
         "width": 1.95,
         "depth": 1.95,
         "height": 2.34,
-        "nativeWidth": 2.1,
-        "nativeDepth": 2.1,
+        "nativeWidth": 1.95,
+        "nativeDepth": 1.95,
         "nativeHeight": 2.34
       },
-      "meshCount": 4,
-      "byteLength": 91912,
+      "size_x": 1.95,
+      "size_y": 2.34,
+      "size_z": 1.95,
+      "meshCount": 6,
+      "byteLength": 113356,
       "hasContactShadow": true
     },
     {
@@ -547,7 +613,7 @@
       "asset_id": "toilet_onepiece",
       "name": "Bồn cầu liền khối men sứ trắng",
       "category": "bathroom_laundry",
-      "url": "/assets/models/toilet_onepiece.glb",
+      "url": "/assets/models/toilet_onepiece.glb?v=e47ec651bafb",
       "file": "toilet_onepiece.glb",
       "legacyTypes": [
         "toilet"
@@ -556,10 +622,13 @@
         "width": 0.42,
         "depth": 0.68,
         "height": 0.76,
-        "nativeWidth": 0.473,
-        "nativeDepth": 0.708,
-        "nativeHeight": 0.774
+        "nativeWidth": 0.42,
+        "nativeDepth": 0.68,
+        "nativeHeight": 0.76
       },
+      "size_x": 0.42,
+      "size_y": 0.76,
+      "size_z": 0.68,
       "meshCount": 3,
       "byteLength": 25436,
       "hasContactShadow": true
@@ -569,7 +638,7 @@
       "asset_id": "lavabo_vanity_led_mirror",
       "name": "Tủ Lavabo treo tường mặt đá & gương LED",
       "category": "bathroom_laundry",
-      "url": "/assets/models/lavabo_vanity_led_mirror.glb",
+      "url": "/assets/models/lavabo_vanity_led_mirror.glb?v=24523624bc9d",
       "file": "lavabo_vanity_led_mirror.glb",
       "legacyTypes": [
         "vanity"
@@ -578,12 +647,15 @@
         "width": 0.96,
         "depth": 0.54,
         "height": 1.99,
-        "nativeWidth": 1,
-        "nativeDepth": 0.603,
-        "nativeHeight": 1.695
+        "nativeWidth": 0.96,
+        "nativeDepth": 0.54,
+        "nativeHeight": 1.99
       },
-      "meshCount": 4,
-      "byteLength": 71752,
+      "size_x": 0.96,
+      "size_y": 1.99,
+      "size_z": 0.54,
+      "meshCount": 8,
+      "byteLength": 90640,
       "hasContactShadow": true
     },
     {
@@ -591,7 +663,7 @@
       "asset_id": "shower_glass_enclosure",
       "name": "Vách kính tắm đứng & sen cây tắm mưa",
       "category": "bathroom_laundry",
-      "url": "/assets/models/shower_glass_enclosure.glb",
+      "url": "/assets/models/shower_glass_enclosure.glb?v=3409af3cc1cd",
       "file": "shower_glass_enclosure.glb",
       "legacyTypes": [
         "shower"
@@ -600,12 +672,15 @@
         "width": 1.05,
         "depth": 1.05,
         "height": 2.05,
-        "nativeWidth": 1.092,
-        "nativeDepth": 1.092,
+        "nativeWidth": 1.05,
+        "nativeDepth": 1.05,
         "nativeHeight": 2.05
       },
-      "meshCount": 4,
-      "byteLength": 43628,
+      "size_x": 1.05,
+      "size_y": 2.05,
+      "size_z": 1.05,
+      "meshCount": 5,
+      "byteLength": 44720,
       "hasContactShadow": true
     },
     {
@@ -613,7 +688,7 @@
       "asset_id": "bathtub_modern",
       "name": "Bồn tắm nằm độc lập & vòi sàn Chrome",
       "category": "bathroom_laundry",
-      "url": "/assets/models/bathtub_modern.glb",
+      "url": "/assets/models/bathtub_modern.glb?v=3ece6003fe69",
       "file": "bathtub_modern.glb",
       "legacyTypes": [
         "bathtub"
@@ -622,12 +697,15 @@
         "width": 1.7,
         "depth": 0.8,
         "height": 0.82,
-        "nativeWidth": 1.768,
-        "nativeDepth": 0.832,
+        "nativeWidth": 1.7,
+        "nativeDepth": 0.8,
         "nativeHeight": 0.82
       },
-      "meshCount": 4,
-      "byteLength": 24072,
+      "size_x": 1.7,
+      "size_y": 0.82,
+      "size_z": 0.8,
+      "meshCount": 5,
+      "byteLength": 44440,
       "hasContactShadow": true
     },
     {
@@ -635,7 +713,7 @@
       "asset_id": "washer_dryer_tower",
       "name": "Tháp máy giặt & máy sấy cửa trước",
       "category": "bathroom_laundry",
-      "url": "/assets/models/washer_dryer_tower.glb",
+      "url": "/assets/models/washer_dryer_tower.glb?v=e2b025d25fc7",
       "file": "washer_dryer_tower.glb",
       "legacyTypes": [
         "washer_dryer"
@@ -644,12 +722,15 @@
         "width": 0.66,
         "depth": 0.68,
         "height": 1.74,
-        "nativeWidth": 0.7,
-        "nativeDepth": 0.707,
+        "nativeWidth": 0.66,
+        "nativeDepth": 0.68,
         "nativeHeight": 1.74
       },
-      "meshCount": 4,
-      "byteLength": 42420,
+      "size_x": 0.66,
+      "size_y": 1.74,
+      "size_z": 0.68,
+      "meshCount": 7,
+      "byteLength": 45624,
       "hasContactShadow": true
     },
     {
@@ -657,7 +738,7 @@
       "asset_id": "balcony_planter_greenery",
       "name": "Bồn cây xanh ban công đa tầng",
       "category": "greenery_architectural",
-      "url": "/assets/models/balcony_planter_greenery.glb",
+      "url": "/assets/models/balcony_planter_greenery.glb?v=e689749e8b9f",
       "file": "balcony_planter_greenery.glb",
       "legacyTypes": [
         "planter"
@@ -666,12 +747,15 @@
         "width": 1.2,
         "depth": 0.36,
         "height": 0.62,
-        "nativeWidth": 1.258,
-        "nativeDepth": 0.52,
-        "nativeHeight": 0.809
+        "nativeWidth": 1.2,
+        "nativeDepth": 0.36,
+        "nativeHeight": 0.62
       },
-      "meshCount": 4,
-      "byteLength": 39448,
+      "size_x": 1.2,
+      "size_y": 0.62,
+      "size_z": 0.36,
+      "meshCount": 5,
+      "byteLength": 40508,
       "hasContactShadow": true
     },
     {
@@ -679,7 +763,7 @@
       "asset_id": "indoor_potted_ficus",
       "name": "Chậu cây bàng Singapore / Ficus nội thất",
       "category": "greenery_architectural",
-      "url": "/assets/models/indoor_potted_ficus.glb",
+      "url": "/assets/models/indoor_potted_ficus.glb?v=1452d793e754",
       "file": "indoor_potted_ficus.glb",
       "legacyTypes": [
         "plants"
@@ -688,12 +772,15 @@
         "width": 0.65,
         "depth": 0.65,
         "height": 1.48,
-        "nativeWidth": 0.749,
-        "nativeDepth": 0.676,
-        "nativeHeight": 1.616
+        "nativeWidth": 0.65,
+        "nativeDepth": 0.65,
+        "nativeHeight": 1.48
       },
-      "meshCount": 4,
-      "byteLength": 50608,
+      "size_x": 0.65,
+      "size_y": 1.48,
+      "size_z": 0.65,
+      "meshCount": 6,
+      "byteLength": 52720,
       "hasContactShadow": true
     },
     {
@@ -701,7 +788,7 @@
       "asset_id": "railing_iron_baluster",
       "name": "Lan can sắt mỹ thuật sơn tĩnh điện (mô-đun 1m)",
       "category": "greenery_architectural",
-      "url": "/assets/models/railing_iron_baluster.glb",
+      "url": "/assets/models/railing_iron_baluster.glb?v=d3e3fe0fe58b",
       "file": "railing_iron_baluster.glb",
       "legacyTypes": [
         "railing"
@@ -710,12 +797,15 @@
         "width": 1,
         "depth": 0.08,
         "height": 1.05,
-        "nativeWidth": 1.04,
-        "nativeDepth": 0.089,
-        "nativeHeight": 1.051
+        "nativeWidth": 1,
+        "nativeDepth": 0.08,
+        "nativeHeight": 1.05
       },
+      "size_x": 1,
+      "size_y": 1.05,
+      "size_z": 0.08,
       "meshCount": 3,
-      "byteLength": 54532,
+      "byteLength": 54472,
       "hasContactShadow": true
     },
     {
@@ -723,7 +813,7 @@
       "asset_id": "door_interior_wood",
       "name": "Cửa đi gỗ sồi pano & tay nắm đồng",
       "category": "greenery_architectural",
-      "url": "/assets/models/door_interior_wood.glb",
+      "url": "/assets/models/door_interior_wood.glb?v=aaaafb6f503f",
       "file": "door_interior_wood.glb",
       "legacyTypes": [
         "door_wood",
@@ -733,10 +823,13 @@
         "width": 0.92,
         "depth": 0.22,
         "height": 2.2,
-        "nativeWidth": 0.96,
-        "nativeDepth": 0.23,
-        "nativeHeight": 2.211
+        "nativeWidth": 0.92,
+        "nativeDepth": 0.22,
+        "nativeHeight": 2.2
       },
+      "size_x": 0.92,
+      "size_y": 2.2,
+      "size_z": 0.22,
       "meshCount": 4,
       "byteLength": 62392,
       "hasContactShadow": true
@@ -746,7 +839,7 @@
       "asset_id": "door_balcony_glass",
       "name": "Cửa lùa nhôm kính ban công 2 cánh",
       "category": "greenery_architectural",
-      "url": "/assets/models/door_balcony_glass.glb",
+      "url": "/assets/models/door_balcony_glass.glb?v=89c724472544",
       "file": "door_balcony_glass.glb",
       "legacyTypes": [
         "door_glass"
@@ -755,10 +848,13 @@
         "width": 1.6,
         "depth": 0.22,
         "height": 2.25,
-        "nativeWidth": 1.664,
-        "nativeDepth": 0.229,
+        "nativeWidth": 1.6,
+        "nativeDepth": 0.22,
         "nativeHeight": 2.25
       },
+      "size_x": 1.6,
+      "size_y": 2.25,
+      "size_z": 0.22,
       "meshCount": 4,
       "byteLength": 14144,
       "hasContactShadow": true
@@ -768,7 +864,7 @@
       "asset_id": "window_casement_glass",
       "name": "Cửa sổ nhôm kính & bệ đá Carrara",
       "category": "greenery_architectural",
-      "url": "/assets/models/window_casement_glass.glb",
+      "url": "/assets/models/window_casement_glass.glb?v=f73e9e4fe61c",
       "file": "window_casement_glass.glb",
       "legacyTypes": [
         "window"
@@ -777,12 +873,15 @@
         "width": 1.4,
         "depth": 0.22,
         "height": 1.5,
-        "nativeWidth": 1.496,
-        "nativeDepth": 0.296,
+        "nativeWidth": 1.4,
+        "nativeDepth": 0.22,
         "nativeHeight": 1.5
       },
+      "size_x": 1.4,
+      "size_y": 1.5,
+      "size_z": 0.22,
       "meshCount": 4,
-      "byteLength": 38060,
+      "byteLength": 38056,
       "hasContactShadow": true
     },
     {
@@ -790,7 +889,7 @@
       "asset_id": "stair_flight_straight",
       "name": "Cầu thang thẳng 1 vế bậc gỗ sồi & lan can sắt",
       "category": "greenery_architectural",
-      "url": "/assets/models/stair_flight_straight.glb",
+      "url": "/assets/models/stair_flight_straight.glb?v=0d9615507a98",
       "file": "stair_flight_straight.glb",
       "legacyTypes": [
         "stair_straight"
@@ -799,12 +898,15 @@
         "width": 1.05,
         "depth": 2.8,
         "height": 3.2,
-        "nativeWidth": 1.092,
-        "nativeDepth": 2.935,
-        "nativeHeight": 4.302
+        "nativeWidth": 1.05,
+        "nativeDepth": 2.8,
+        "nativeHeight": 3.2
       },
-      "meshCount": 4,
-      "byteLength": 78988,
+      "size_x": 1.05,
+      "size_y": 3.2,
+      "size_z": 2.8,
+      "meshCount": 6,
+      "byteLength": 99828,
       "hasContactShadow": true
     },
     {
@@ -812,7 +914,7 @@
       "asset_id": "stair_flight_u_turn",
       "name": "Cầu thang đổi chiều chữ U có chiếu nghỉ",
       "category": "greenery_architectural",
-      "url": "/assets/models/stair_flight_u_turn.glb",
+      "url": "/assets/models/stair_flight_u_turn.glb?v=61f0dbd410cc",
       "file": "stair_flight_u_turn.glb",
       "legacyTypes": [
         "stair_u",
@@ -822,70 +924,315 @@
         "width": 2.2,
         "depth": 2.8,
         "height": 3.6,
-        "nativeWidth": 2.288,
-        "nativeDepth": 2.912,
-        "nativeHeight": 4.712
+        "nativeWidth": 2.2,
+        "nativeDepth": 2.8,
+        "nativeHeight": 3.6
       },
-      "meshCount": 4,
-      "byteLength": 94744,
+      "size_x": 2.2,
+      "size_y": 3.6,
+      "size_z": 2.8,
+      "meshCount": 6,
+      "byteLength": 115592,
       "hasContactShadow": true
     },
     {
-      "id": "custom_art_chair_1794471875348",
-      "asset_id": "custom_art_chair_1794471875348",
-      "name": "Ghế bành thư giãn Art Deco Cao Cấp",
-      "category": "living_room",
-      "url": "/assets/models/custom/custom_art_chair_1794471875348.glb",
-      "file": "custom/custom_art_chair_1794471875348.glb",
+      "id": "nightstand_oak",
+      "asset_id": "nightstand_oak",
+      "name": "Tab đầu giường gỗ sồi",
+      "category": "bedroom",
+      "url": "/assets/models/nightstand_oak.glb?v=5bae6ffbfa40",
+      "file": "nightstand_oak.glb",
+      "legacyTypes": [],
       "dimensions": {
-        "width": 0.95,
-        "depth": 0.9,
-        "height": 0.85
+        "width": 0.46,
+        "depth": 0.42,
+        "height": 0.52,
+        "nativeWidth": 0.46,
+        "nativeDepth": 0.42,
+        "nativeHeight": 0.52
       },
-      "placement_type": "floor_center",
-      "room_types": [
-        "phong_khach",
-        "phong_ngu"
-      ],
-      "isCustom": true
+      "size_x": 0.46,
+      "size_y": 0.52,
+      "size_z": 0.42,
+      "meshCount": 5,
+      "byteLength": 99196,
+      "hasContactShadow": true
     },
     {
-      "id": "custom_art_chair_1794472187487",
-      "asset_id": "custom_art_chair_1794472187487",
-      "name": "Ghế bành thư giãn Art Deco Cao Cấp",
+      "id": "console_walnut",
+      "asset_id": "console_walnut",
+      "name": "Bàn console gỗ óc chó",
       "category": "living_room",
-      "url": "/assets/models/custom/custom_art_chair_1794472187487.glb",
-      "file": "custom/custom_art_chair_1794472187487.glb",
+      "url": "/assets/models/console_walnut.glb?v=09aae85eaed3",
+      "file": "console_walnut.glb",
+      "legacyTypes": [],
       "dimensions": {
-        "width": 0.95,
-        "depth": 0.9,
-        "height": 0.85
+        "width": 1.15,
+        "depth": 0.35,
+        "height": 0.78,
+        "nativeWidth": 1.15,
+        "nativeDepth": 0.35,
+        "nativeHeight": 0.78
       },
-      "placement_type": "floor_center",
-      "room_types": [
-        "phong_khach",
-        "phong_ngu"
-      ],
-      "isCustom": true
+      "size_x": 1.15,
+      "size_y": 0.78,
+      "size_z": 0.35,
+      "meshCount": 3,
+      "byteLength": 49596,
+      "hasContactShadow": true
     },
     {
-      "id": "custom_art_chair_1794472274999",
-      "asset_id": "custom_art_chair_1794472274999",
-      "name": "Ghế bành thư giãn Art Deco Cao Cấp",
+      "id": "side_table_granite",
+      "asset_id": "side_table_granite",
+      "name": "Bàn phụ mặt granite",
       "category": "living_room",
-      "url": "/assets/models/custom/custom_art_chair_1794472274999.glb",
-      "file": "custom/custom_art_chair_1794472274999.glb",
+      "url": "/assets/models/side_table_granite.glb?v=2897fc40c9b8",
+      "file": "side_table_granite.glb",
+      "legacyTypes": [],
       "dimensions": {
-        "width": 0.95,
-        "depth": 0.9,
-        "height": 0.85
+        "width": 0.43,
+        "depth": 0.43,
+        "height": 0.49,
+        "nativeWidth": 0.43,
+        "nativeDepth": 0.43,
+        "nativeHeight": 0.49
       },
-      "placement_type": "floor_center",
-      "room_types": [
-        "phong_khach",
-        "phong_ngu"
-      ],
-      "isCustom": true
+      "size_x": 0.43,
+      "size_y": 0.49,
+      "size_z": 0.43,
+      "meshCount": 3,
+      "byteLength": 18664,
+      "hasContactShadow": true
+    },
+    {
+      "id": "bar_stool_oak",
+      "asset_id": "bar_stool_oak",
+      "name": "Ghế bar lưng cong",
+      "category": "kitchen_dining",
+      "url": "/assets/models/bar_stool_oak.glb?v=47c6779408fd",
+      "file": "bar_stool_oak.glb",
+      "legacyTypes": [],
+      "dimensions": {
+        "width": 0.44,
+        "depth": 0.43,
+        "height": 0.97,
+        "nativeWidth": 0.44,
+        "nativeDepth": 0.43,
+        "nativeHeight": 0.97
+      },
+      "size_x": 0.44,
+      "size_y": 0.97,
+      "size_z": 0.43,
+      "meshCount": 4,
+      "byteLength": 84976,
+      "hasContactShadow": true
+    },
+    {
+      "id": "ceramic_vase",
+      "asset_id": "ceramic_vase",
+      "name": "Bình gốm trang trí",
+      "category": "worship_rooftop",
+      "url": "/assets/models/ceramic_vase.glb?v=346b1233cc55",
+      "file": "ceramic_vase.glb",
+      "legacyTypes": [],
+      "dimensions": {
+        "width": 0.3,
+        "depth": 0.3,
+        "height": 0.32,
+        "nativeWidth": 0.3,
+        "nativeDepth": 0.3,
+        "nativeHeight": 0.32
+      },
+      "size_x": 0.3,
+      "size_y": 0.32,
+      "size_z": 0.3,
+      "meshCount": 2,
+      "byteLength": 13480,
+      "hasContactShadow": true
+    },
+    {
+      "id": "floor_lamp_brass",
+      "asset_id": "floor_lamp_brass",
+      "name": "Đèn đứng chụp vải",
+      "category": "living_room",
+      "url": "/assets/models/floor_lamp_brass.glb?v=6bcec499c791",
+      "file": "floor_lamp_brass.glb",
+      "legacyTypes": [],
+      "dimensions": {
+        "width": 0.42,
+        "depth": 0.42,
+        "height": 1.57,
+        "nativeWidth": 0.42,
+        "nativeDepth": 0.42,
+        "nativeHeight": 1.57
+      },
+      "size_x": 0.42,
+      "size_y": 1.57,
+      "size_z": 0.42,
+      "meshCount": 4,
+      "byteLength": 32280,
+      "hasContactShadow": true
+    },
+    {
+      "id": "bench_velvet",
+      "asset_id": "bench_velvet",
+      "name": "Ghế băng nhung xanh",
+      "category": "bedroom",
+      "url": "/assets/models/bench_velvet.glb?v=7dadbaa5c0ca",
+      "file": "bench_velvet.glb",
+      "legacyTypes": [],
+      "dimensions": {
+        "width": 1.12,
+        "depth": 0.43,
+        "height": 0.49,
+        "nativeWidth": 1.12,
+        "nativeDepth": 0.43,
+        "nativeHeight": 0.49
+      },
+      "size_x": 1.12,
+      "size_y": 0.49,
+      "size_z": 0.43,
+      "meshCount": 4,
+      "byteLength": 72952,
+      "hasContactShadow": true
+    },
+    {
+      "id": "arch_mirror_brass",
+      "asset_id": "arch_mirror_brass",
+      "name": "Gương vòm viền đồng",
+      "category": "bathroom_laundry",
+      "url": "/assets/models/arch_mirror_brass.glb?v=c9fc754e4423",
+      "file": "arch_mirror_brass.glb",
+      "legacyTypes": [],
+      "dimensions": {
+        "width": 0.65,
+        "depth": 0.055,
+        "height": 1.12,
+        "nativeWidth": 0.65,
+        "nativeDepth": 0.055,
+        "nativeHeight": 1.12
+      },
+      "size_x": 0.65,
+      "size_y": 1.12,
+      "size_z": 0.055,
+      "meshCount": 3,
+      "byteLength": 27676,
+      "hasContactShadow": true
+    },
+    {
+      "id": "oak_bookcase",
+      "asset_id": "oak_bookcase",
+      "name": "Kệ sách gỗ sồi năm tầng",
+      "category": "bedroom",
+      "url": "/assets/models/oak_bookcase.glb?v=f097c5dd64da",
+      "file": "oak_bookcase.glb",
+      "legacyTypes": [],
+      "dimensions": {
+        "width": 0.86,
+        "depth": 0.34,
+        "height": 1.7,
+        "nativeWidth": 0.86,
+        "nativeDepth": 0.34,
+        "nativeHeight": 1.7
+      },
+      "size_x": 0.86,
+      "size_y": 1.7,
+      "size_z": 0.34,
+      "meshCount": 3,
+      "byteLength": 142688,
+      "hasContactShadow": true
+    },
+    {
+      "id": "pedestal_dining_oak",
+      "asset_id": "pedestal_dining_oak",
+      "name": "Bàn ăn tròn chân trụ gỗ sồi",
+      "category": "kitchen_dining",
+      "url": "/assets/models/pedestal_dining_oak.glb?v=dc5228224325",
+      "file": "pedestal_dining_oak.glb",
+      "legacyTypes": [],
+      "dimensions": {
+        "width": 1.08,
+        "depth": 1.08,
+        "height": 0.76,
+        "nativeWidth": 1.08,
+        "nativeDepth": 1.08,
+        "nativeHeight": 0.76
+      },
+      "size_x": 1.08,
+      "size_y": 0.76,
+      "size_z": 1.08,
+      "meshCount": 4,
+      "byteLength": 57048,
+      "hasContactShadow": true
+    },
+    {
+      "id": "outdoor_planter_low",
+      "asset_id": "outdoor_planter_low",
+      "name": "Chậu cây thấp sân thượng",
+      "category": "greenery_architectural",
+      "url": "/assets/models/outdoor_planter_low.glb?v=44ce4abf6fe4",
+      "file": "outdoor_planter_low.glb",
+      "legacyTypes": [],
+      "dimensions": {
+        "width": 0.68,
+        "depth": 0.52,
+        "height": 0.58,
+        "nativeWidth": 0.68,
+        "nativeDepth": 0.52,
+        "nativeHeight": 0.58
+      },
+      "size_x": 0.68,
+      "size_y": 0.58,
+      "size_z": 0.52,
+      "meshCount": 3,
+      "byteLength": 62092,
+      "hasContactShadow": true
+    },
+    {
+      "id": "worship_screen_oak",
+      "asset_id": "worship_screen_oak",
+      "name": "Vách lam trang trí phòng thờ",
+      "category": "worship_rooftop",
+      "url": "/assets/models/worship_screen_oak.glb?v=53459ca7075e",
+      "file": "worship_screen_oak.glb",
+      "legacyTypes": [],
+      "dimensions": {
+        "width": 0.92,
+        "depth": 0.22,
+        "height": 1.54,
+        "nativeWidth": 0.92,
+        "nativeDepth": 0.22,
+        "nativeHeight": 1.54
+      },
+      "size_x": 0.92,
+      "size_y": 1.54,
+      "size_z": 0.22,
+      "meshCount": 3,
+      "byteLength": 165268,
+      "hasContactShadow": true
+    },
+    {
+      "id": "ceramic_planter_leaf",
+      "asset_id": "ceramic_planter_leaf",
+      "name": "Chậu gốm tán lá nhiều tầng",
+      "category": "greenery_architectural",
+      "url": "/assets/models/ceramic_planter_leaf.glb?v=8e51f03efe26",
+      "file": "ceramic_planter_leaf.glb",
+      "legacyTypes": [],
+      "dimensions": {
+        "width": 0.55,
+        "depth": 0.55,
+        "height": 0.85,
+        "nativeWidth": 0.55,
+        "nativeDepth": 0.55,
+        "nativeHeight": 0.85
+      },
+      "size_x": 0.55,
+      "size_y": 0.85,
+      "size_z": 0.55,
+      "meshCount": 4,
+      "byteLength": 79104,
+      "hasContactShadow": true
     }
   ]
 }

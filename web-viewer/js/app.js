@@ -10,10 +10,12 @@ import { Viewer3D } from './viewer_3d.js';
 import { CadBimPipeline } from './cad_bim_pipeline.js';
 import { FloorplanSvgGenerator } from './floorplan_svg.js';
 import { AssetLibraryManager } from './asset_library_manager.js';
-import { SAMPLE_VILLA, SAMPLE_TOWNHOUSE_4F, SAMPLE_VILLA_GARDEN_3F } from './sample_models.js';
+import { SEED_PROJECTS } from './verified_projects.js';
 import { AiSettingsModal } from './ai_settings_modal.js';
 import { FurnitureStoreModal } from './furniture_store_modal.js';
 import { AiChatController } from './ai_chat_controller.js';
+import { CinematicTourDirector } from './cinematic_tour_director.js';
+import { VideoExporter } from './video_exporter.js';
 
 class ArchitecturalViewerApp {
   constructor() {
@@ -36,6 +38,8 @@ class ArchitecturalViewerApp {
     this.aiSettings = null;
     this.furnitureStore = null;
     this.aiChat = null;
+    this.tourDirector = null;
+    this.videoExporter = null;
 
     this.init();
   }
@@ -46,22 +50,54 @@ class ArchitecturalViewerApp {
     this.viewer = new Viewer3D(container, {
       onObjectSelected: (objData) => this.showObjectInspector(objData),
       onFloorIsolated: (floorId) => this.syncFloorIsolationUI(floorId),
+      onTourViewChange: (mode, lights) => {
+        document.querySelectorAll('[data-view-mode]').forEach(button => {
+          button.classList.toggle('active', button.dataset.viewMode === mode);
+        });
+        const lightToggle = document.getElementById('toggle-interior-lights');
+        lightToggle?.classList.toggle('active', lights);
+        const label = lightToggle?.querySelector('.label');
+        if (label) label.textContent = lights ? 'Đèn nhà: BẬT' : 'Đèn nhà: TẮT';
+        document.getElementById('exploded-slider-card')?.classList.add('hidden');
+      },
       onAssetPreloadProgress: (loaded, total, assetId) => this.updateAssetPreloadBadge(loaded, total, assetId)
     });
 
-    // 2. Initialize Modals and AI Chat Controller
-    this.aiSettings = new AiSettingsModal();
-    this.furnitureStore = new FurnitureStoreModal({
+    // 2. Initialize Modals, AI Chat Controller, and Cinematic Video Exporter
+    const isPureViewer = document.documentElement.classList.contains('mode-viewer') || document.body.classList.contains('is-viewer-page') || window.location.pathname.includes('/viewer');
+    if (!isPureViewer) {
+      this.aiSettings = new AiSettingsModal();
+      this.furnitureStore = new FurnitureStoreModal({
+        viewer: this.viewer,
+        onAssetAdded: (asset) => {
+          console.log('[App] New custom furniture added:', asset);
+        }
+      });
+      this.aiChat = new AiChatController(this);
+    }
+
+    this.tourDirector = new CinematicTourDirector(this.viewer);
+    this.videoExporter = new VideoExporter({
       viewer: this.viewer,
-      onAssetAdded: (asset) => {
-        console.log('[App] New custom furniture added:', asset);
+      director: this.tourDirector,
+      getProjectMeta: () => {
+        const activeP = this.availableProjects.find(p => p.id === this.activeProjectId) || this.currentBim?.metadata;
+        return {
+          title: activeP?.title || this.currentBim?.metadata?.title || 'Biệt Thự Hiện Đại 2 Tầng 1 Tum',
+          code: activeP?.code || this.currentBim?.metadata?.code || 'NN-2026-BT08'
+        };
       }
     });
-    this.aiChat = new AiChatController(this);
+    window.cinematicTourDirector = this.tourDirector;
+    window.videoExporter = this.videoExporter;
 
     // 3. Setup DOM event listeners & CAD file drag/drop
     this.setupUIEventListeners();
-    this.setupCadFileHandling();
+    if (!isPureViewer) {
+      this.setupCadFileHandling();
+      this.setupCompactStudioMenu();
+    }
+    this.setupFloorSheet();
 
     // 4. Preload 35 .glb models and load projects list in parallel
     await Promise.all([
@@ -69,19 +105,19 @@ class ArchitecturalViewerApp {
       this.loadProjectList()
     ]);
 
-    // 5. Check URL query parameters (?mode=viewer & ?project=<id>)
+    // 5. Check URL query parameters (?mode=viewer, /viewer, & ?project=<id>)
     const urlParams = new URLSearchParams(window.location.search);
     const requestedProject = urlParams.get('project');
-    const isViewerMode = urlParams.get('mode') === 'viewer';
+    const isViewerMode = urlParams.get('mode') === 'viewer' || window.location.pathname.includes('/viewer');
 
-    let defaultId = 'proj_sample_villa_3f';
+    let defaultId = SEED_PROJECTS[0].id;
     if (requestedProject) {
       const match = this.availableProjects.find(p => p.id === requestedProject || p.code === requestedProject);
       if (match) {
         defaultId = match.id;
       }
     } else {
-      const defaultProject = this.availableProjects[0] || SAMPLE_VILLA;
+      const defaultProject = this.availableProjects[0] || SEED_PROJECTS[0];
       defaultId = defaultProject.id || 'proj_sample_villa_3f';
     }
 
@@ -105,11 +141,6 @@ class ArchitecturalViewerApp {
   // ================= MULTI-PROJECT MANAGEMENT =================
 
   async loadProjectList() {
-    const sampleVillaWithId = {
-      id: SAMPLE_VILLA.id || 'proj_sample_villa_3f',
-      ...SAMPLE_VILLA
-    };
-
     try {
       const res = await fetch('/api/projects');
       if (res.ok) {
@@ -117,13 +148,6 @@ class ArchitecturalViewerApp {
         const list = Array.isArray(json) ? json : (json.data || []);
         if (Array.isArray(list) && list.length > 0) {
           this.availableProjects = list;
-          // Ensure SAMPLE_VILLA is also available in the switcher
-          const hasVilla = this.availableProjects.some(
-            p => p.id === sampleVillaWithId.id || p.code === SAMPLE_VILLA.code
-          );
-          if (!hasVilla) {
-            this.availableProjects.push(sampleVillaWithId);
-          }
         } else {
           this.setupFallbackProjects();
         }
@@ -140,11 +164,7 @@ class ArchitecturalViewerApp {
   }
 
   setupFallbackProjects() {
-    this.availableProjects = [
-      SAMPLE_TOWNHOUSE_4F,
-      SAMPLE_VILLA_GARDEN_3F,
-      { id: SAMPLE_VILLA.id || 'proj_sample_villa_3f', ...SAMPLE_VILLA }
-    ];
+    this.availableProjects = SEED_PROJECTS;
   }
 
   updateProjectCounts() {
@@ -490,8 +510,9 @@ class ArchitecturalViewerApp {
 
   loadModelData(cadInput) {
     try {
+      this.viewer.stopCinematicTour();
       this.currentBim = this.pipeline.process(cadInput);
-      this.activeFloorId = this.currentBim.floors[0] ? this.currentBim.floors[0].id : 'floor_1';
+      this.activeFloorId = null;
 
       // Reset floor visibilities
       this.floorVisibility.clear();
@@ -639,7 +660,10 @@ class ArchitecturalViewerApp {
     if (lightToggle) {
       lightToggle.addEventListener('click', () => {
         const isActive = lightToggle.classList.toggle('active');
-        lightToggle.querySelector('.label').textContent = isActive ? 'Đèn nhà: BẬT' : 'Đèn nhà: TẮT';
+        const lbl = lightToggle.querySelector('.label');
+        if (lbl) {
+          lbl.textContent = isActive ? '🟠 Đèn nhà: BẬT' : '⚪ Đèn nhà: TẮT';
+        }
         this.viewer.setInteriorLights(isActive);
       });
     }
@@ -649,7 +673,10 @@ class ArchitecturalViewerApp {
     if (labelsToggle) {
       labelsToggle.addEventListener('click', () => {
         const isActive = labelsToggle.classList.toggle('active');
-        labelsToggle.querySelector('.label').textContent = isActive ? 'Nhãn phòng: BẬT' : 'Nhãn phòng: TẮT';
+        const lbl = labelsToggle.querySelector('.label');
+        if (lbl) {
+          lbl.textContent = isActive ? 'Nhãn phòng: BẬT' : 'Nhãn phòng: TẮT';
+        }
         this.viewer.setRoomLabelsVisible(isActive);
       });
     }
@@ -703,25 +730,51 @@ class ArchitecturalViewerApp {
       });
     }
 
+    // 10.5 Viewport HUD Fullscreen button
+    const vpFullscreenBtn = document.getElementById('btn-viewport-fullscreen');
+    if (vpFullscreenBtn) {
+      vpFullscreenBtn.addEventListener('click', () => {
+        this.toggleBrowserFullscreen();
+      });
+    }
+
+    // 10.6 View Tour 3D Button in 3D Viewport
+    const tourBtn = document.getElementById('btn-view-tour-3d');
+    if (tourBtn) {
+      tourBtn.addEventListener('click', () => {
+        this.triggerCinematicTour();
+      });
+    }
+
+    // 10.7 Copy Client Viewer Link (Header Button)
+    const copyClientBtn = document.getElementById('btn-copy-client-link');
+    if (copyClientBtn) {
+      copyClientBtn.addEventListener('click', () => {
+        this.copyClientViewerLink();
+      });
+    }
+
+    // 10.8 Cinematic Video Exporter (Header Button)
+    const exportVideoBtn = document.getElementById('btn-export-video');
+    if (exportVideoBtn) {
+      exportVideoBtn.addEventListener('click', () => {
+        this.openVideoExportModal();
+      });
+    }
+
     // 11. Presentation Viewer Mode Controls
     const btnPresentationMode = document.getElementById('btn-presentation-mode');
     if (btnPresentationMode) {
       btnPresentationMode.addEventListener('click', () => {
         this.enterPresentationMode();
       });
-    }
-
-    const btnExitPresentation = document.getElementById('btn-return-studio') || document.getElementById('btn-exit-presentation');
-    if (btnExitPresentation) {
-      btnExitPresentation.addEventListener('click', () => {
-        this.exitPresentationMode();
-      });
-    }
-
-    const btnPresentationFs = document.getElementById('btn-presentation-fullscreen');
-    if (btnPresentationFs) {
-      btnPresentationFs.addEventListener('click', () => {
-        this.toggleBrowserFullscreen();
+      document.addEventListener('keydown', event => {
+        if (event.key === 'Escape' && this.isPresentationMode &&
+            !document.documentElement.classList.contains('mode-viewer') &&
+            !document.fullscreenElement && !document.querySelector('.blueprint-modal:not(.hidden)')) {
+          this.exitPresentationMode();
+          btnPresentationMode.focus();
+        }
       });
     }
   }
@@ -731,12 +784,20 @@ class ArchitecturalViewerApp {
     document.body.classList.add('presentation-mode');
     document.body.classList.add('mode-viewer');
 
-    const toolbar = document.getElementById('presentation-toolbar');
-    if (toolbar) toolbar.classList.remove('hidden');
-
     // Close chat panel if open
     if (this.aiChat) {
       this.aiChat.closePanel();
+    }
+
+    // Close any open admin modals
+    this.closeProjectsModal();
+    this.closeNewProjectModal();
+    if (this.aiSettings?.closeModal) this.aiSettings.closeModal();
+    if (this.furnitureStore?.closeModal) this.furnitureStore.closeModal();
+
+    // Ensure Stage 5 (PBR materials & lighting)
+    if (this.viewer) {
+      this.viewer.setRenderingStage(5);
     }
 
     // Resize viewport smoothly
@@ -750,13 +811,99 @@ class ArchitecturalViewerApp {
     document.body.classList.remove('presentation-mode');
     document.body.classList.remove('mode-viewer');
 
-    const toolbar = document.getElementById('presentation-toolbar');
-    if (toolbar) toolbar.classList.add('hidden');
+    // Clean URL query parameter if present
+    const url = new URL(window.location.href);
+    if (url.searchParams.has('mode')) {
+      url.searchParams.delete('mode');
+      window.history.replaceState({}, '', url.pathname + (url.search ? url.search : ''));
+    }
 
     // Resize viewport smoothly
     setTimeout(() => {
       if (this.viewer) this.viewer.onWindowResize();
     }, 100);
+  }
+
+  copyClientViewerLink() {
+    const url = new URL(window.location.origin + '/viewer');
+    if (this.activeProjectId) {
+      url.searchParams.set('project', this.activeProjectId);
+    }
+    const shareableUrl = url.toString();
+
+    const fallbackCopy = (text) => {
+      const textarea = document.createElement('textarea');
+      textarea.value = text;
+      textarea.style.position = 'fixed';
+      textarea.style.opacity = '0';
+      document.body.appendChild(textarea);
+      textarea.focus();
+      textarea.select();
+      try {
+        document.execCommand('copy');
+      } catch (e) {
+        console.warn('execCommand copy failed:', e);
+      }
+      document.body.removeChild(textarea);
+    };
+
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(shareableUrl).then(() => {
+        this.showToast('🔗 Đã sao chép liên kết Client Viewer cho khách hàng!');
+      }).catch(() => {
+        fallbackCopy(shareableUrl);
+        this.showToast('🔗 Đã sao chép liên kết Client Viewer cho khách hàng!');
+      });
+    } else {
+      fallbackCopy(shareableUrl);
+      this.showToast('🔗 Đã sao chép liên kết Client Viewer cho khách hàng!');
+    }
+  }
+
+  openVideoExportModal() {
+    window.dispatchEvent(new CustomEvent('open-video-export-modal', {
+      detail: { projectId: this.activeProjectId }
+    }));
+
+    if (this.videoExporter) {
+      this.videoExporter.openModal();
+    } else {
+      const modal = document.getElementById('modal-video-exporter') || document.getElementById('modal-video-export');
+      if (modal) modal.classList.remove('hidden');
+    }
+  }
+
+  triggerCinematicTour() {
+    window.dispatchEvent(new CustomEvent('start-cinematic-tour', {
+      detail: { projectId: this.activeProjectId }
+    }));
+
+    if (!this.currentBim) return;
+    if (this.tourDirector.isPlaying) {
+      this.videoExporter.stopLiveTour();
+    } else {
+      this.videoExporter.startLiveTour();
+    }
+  }
+
+  showToast(msg, duration = 3000) {
+    let toast = document.getElementById('client-toast');
+    if (!toast) {
+      toast = document.createElement('div');
+      toast.id = 'client-toast';
+      toast.className = 'client-toast hidden';
+      document.body.appendChild(toast);
+    }
+
+    toast.textContent = msg;
+    toast.classList.remove('hidden');
+
+    if (this._toastTimer) {
+      clearTimeout(this._toastTimer);
+    }
+    this._toastTimer = setTimeout(() => {
+      toast.classList.add('hidden');
+    }, duration);
   }
 
   toggleBrowserFullscreen() {
@@ -821,7 +968,61 @@ class ArchitecturalViewerApp {
     document.getElementById('stat-floor-area').textContent = `${m.total_floor_area} m²`;
   }
 
+  setupCompactStudioMenu() {
+    const button = document.getElementById('studio-tools-toggle');
+    const actions = document.getElementById('studio-header-actions');
+    const setOpen = open => {
+      button.setAttribute('aria-expanded', String(open));
+      actions.classList.toggle('studio-menu-open', open);
+    };
+    button.addEventListener('click', () => setOpen(!actions.classList.contains('studio-menu-open')));
+    actions.addEventListener('click', event => {
+      if (event.target.closest('button')) setOpen(false);
+    });
+    document.addEventListener('keydown', event => {
+      if (event.key !== 'Escape' || !actions.classList.contains('studio-menu-open')) return;
+      setOpen(false);
+      button.focus();
+    });
+  }
+
+  setupFloorSheet() {
+    const sidebar = document.getElementById('sidebar-left');
+    const toggle = sidebar.querySelector('.floor-sheet-toggle');
+    toggle.addEventListener('click', () => {
+      const open = sidebar.classList.toggle('sheet-open');
+      toggle.setAttribute('aria-expanded', String(open));
+      toggle.textContent = open ? 'Thu gọn' : 'Mở hồ sơ';
+      if (!open) sidebar.scrollTop = 0;
+    });
+  }
+
+  renderQuickFloors() {
+    const list = document.getElementById('floor-quick-list');
+    document.getElementById('floor-sheet-title').textContent = this.currentBim.metadata.title;
+    list.replaceChildren();
+    const entries = [[null, 'Tất cả'], ...this.currentBim.floors.map((floor, index) => [floor.id, 'T' + (index + 1)])];
+    for (const [id, label] of entries) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.textContent = label;
+      button.dataset.floor = id || '';
+      button.setAttribute('aria-pressed', String(id === this.activeFloorId));
+      button.addEventListener('click', () => {
+        if (id) {
+          this.selectFloor(id);
+        } else {
+          this.viewer.showAllFloors();
+          this.syncFloorIsolationUI(null);
+          this.viewer.focusBuilding();
+        }
+      });
+      list.append(button);
+    }
+  }
+
   renderFloorList() {
+    this.renderQuickFloors();
     const container = document.getElementById('floor-list-container');
     container.innerHTML = '';
 
@@ -850,16 +1051,20 @@ class ArchitecturalViewerApp {
         this.selectFloor(floor.id);
       });
 
-      // Toggle floor visibility
+      // Toggle floor visibility or isolate floor
       const eyeBtn = card.querySelector('.floor-eye-btn');
       eyeBtn.addEventListener('click', (e) => {
         e.stopPropagation();
-        const currentVis = this.floorVisibility.get(floor.id);
-        const newVis = !currentVis;
-        this.floorVisibility.set(floor.id, newVis);
-        eyeBtn.classList.toggle('visible', newVis);
-        eyeBtn.classList.toggle('hidden', !newVis);
-        this.viewer.setFloorVisibility(floor.id, newVis);
+        if (floor.id !== this.activeFloorId) {
+          this.selectFloor(floor.id);
+        } else {
+          const currentVis = this.floorVisibility.get(floor.id);
+          const newVis = !currentVis;
+          this.floorVisibility.set(floor.id, newVis);
+          eyeBtn.classList.toggle('visible', newVis);
+          eyeBtn.classList.toggle('hidden', !newVis);
+          this.viewer.setFloorVisibility(floor.id, newVis);
+        }
       });
 
       container.appendChild(card);
@@ -883,10 +1088,14 @@ class ArchitecturalViewerApp {
     this.activeFloorId = floorId;
     const activeIdx = this.currentBim.floors.findIndex(f => f.id === floorId);
 
-    if (activeIdx !== -1) {
+    document.querySelectorAll('#floor-quick-list button').forEach(button => {
+      button.setAttribute('aria-pressed', String(button.dataset.floor === (floorId || '')));
+    });
+
+    if (activeIdx !== -1 || floorId === null) {
       this.currentBim.floors.forEach((floor, idx) => {
         // Hide all floors above active floor (idx > activeIdx)
-        const isVisible = idx <= activeIdx;
+        const isVisible = activeIdx < 0 || idx <= activeIdx;
         this.floorVisibility.set(floor.id, isVisible);
         this.viewer.setFloorVisibility(floor.id, isVisible);
 
@@ -965,7 +1174,7 @@ class ArchitecturalViewerApp {
   }
 
   closeFloorplanModal() {
-    document.getElementById('floorplan-modal').classList.add('hidden');
+    document.getElementById('floorplan-modal')?.classList.add('hidden');
   }
 
   showObjectInspector(objData) {

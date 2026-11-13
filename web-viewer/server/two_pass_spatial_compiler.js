@@ -1,3 +1,4 @@
+import { buildRoomPartitions, normalizeRoom, roomAllowsFurniture, validateAndSanitizeFloorPlan } from '../js/architectural_layout.js';
 /**
  * two_pass_spatial_compiler.js
  * OpenCADStudio_Z / Nếp Nhà - Web Viewer Backend
@@ -102,12 +103,20 @@ export class TwoPassSpatialCompiler {
     const wallSanitization = this.sanitizeWallsAndSlab(activeFloor, slabBounds);
     phase2Details.wallsSanitized = wallSanitization.wallsClamped;
     phase2Details.cornersClosed = wallSanitization.cornersClosed;
+    phase2Details.tJunctionsCleaned = wallSanitization.tJunctionsCleaned || 0;
 
     // Pass 2.2: Vertical Core & Stair Sync across all floors
     const stairSyncResult = this.syncVerticalCoreAndStairs(project);
     phase2Details.stairVoidsCut = stairSyncResult.voidsCreated;
 
     // Pass 2.3: Modular Furniture Placement Solver
+    for (const record of furnitureCatalog) {
+      const id = record.asset_id;
+      if (!id?.startsWith('generated_') || !userMessage.includes(id)) continue;
+      const kind = record.tags?.find(tag => tag.startsWith('kind:'))?.slice(5);
+      intent.requestedFurniture.push({ asset_id:id, keyword:id, name:record.name, category:kind || 'sofa' });
+    }
+
     const furnitureSolverResult = this.solveFurniturePlacement({
       floor: activeFloor,
       requestedFurniture: intent.requestedFurniture,
@@ -116,7 +125,44 @@ export class TwoPassSpatialCompiler {
       existingStairs: stairSyncResult.stairsByFloor[activeFloor.id] || []
     });
 
-    phase2Details.furniturePlaced = furnitureSolverResult.placedItems.length;
+    const authoredGrid = activeFloor.metadata?.roomGrid && activeFloor.rooms.length;
+    const structuralLayers = new Set(['A-WALL-EXTR', 'A-WALL-INTR', 'A-DOOR', 'A-GLAZ', 'A-COLS', 'A-STAIR', 'A-SITE']);
+    const authoredStructure = authoredGrid ? activeFloor.entities.filter(entity => structuralLayers.has(entity.layer)) : [];
+    const roomTypes = new Map(intent.rooms.map(room => [room.zone, room]));
+    const requestedRooms = [...roomTypes.values()];
+    const hallWidth = requestedRooms.length > 1 ? Math.min(1.25, (slabBounds.maxX - slabBounds.minX) / 3) : 0;
+    const roomMaxX = slabBounds.maxX - hallWidth;
+    const span = slabBounds.maxY - slabBounds.minY;
+    const rooms = authoredGrid ? activeFloor.rooms : requestedRooms.map((room, index) => normalizeRoom({
+      ...room, id: 'room_' + (index + 1), x_min: slabBounds.minX, x_max: roomMaxX,
+      z_min: slabBounds.minY + span * index / requestedRooms.length,
+      z_max: slabBounds.minY + span * (index + 1) / requestedRooms.length
+    }));
+    if (!authoredGrid && hallWidth) {
+      rooms.push(normalizeRoom({ id: 'hall', name: 'Sảnh', type: 'circulation',
+        x_min: roomMaxX, x_max: slabBounds.maxX, z_min: slabBounds.minY, z_max: slabBounds.maxY }));
+    }
+    const { walls, doors } = buildRoomPartitions(rooms, slabBounds,
+      rooms.filter(room => room.id !== 'hall').map(room => [room.id, 'hall']));
+    const front = rooms.find(room => room.id !== 'hall');
+    if (!authoredGrid && front) doors.push({ x: hallWidth ? roomMaxX + hallWidth / 2 : front.x, y: slabBounds.minY, width: 0.9, rotation: 0 });
+
+    const anchorNames = ['north', 'west', 'south', 'east'];
+    const incoming = furnitureSolverResult.placedItems.flatMap(item => {
+      const room = rooms.find(candidate => roomAllowsFurniture(candidate, item));
+      if (!room) return [];
+      const rotation = ((Math.round((item.rotation || 0) / (Math.PI / 2)) % 4) + 4) % 4;
+      const anchor = item.placement_type === 'floor_free' ? 'center' : anchorNames[rotation];
+      const alongX = anchor !== 'west' && anchor !== 'east';
+      return [{ ...item, z: room.y, room_id: room.id, anchor_wall: anchor,
+        offset_along_wall: alongX ? room.x - room.bounds.minX : room.y - room.bounds.minY }];
+    });
+    const sanitized = validateAndSanitizeFloorPlan({
+      ...activeFloor, rooms, doors: authoredGrid ? activeFloor.doors : doors,
+      furniture: [...activeFloor.furniture, ...incoming],
+      metadata: { ...activeFloor.metadata, roomGrid: true }
+    });
+    phase2Details.furniturePlaced = sanitized.furniture.length;
     phase2Details.collisionsAvoided = furnitureSolverResult.collisionsAvoided;
     phase2Details.doorClearancesVerified = furnitureSolverResult.doorClearancesVerified;
 
@@ -132,10 +178,25 @@ export class TwoPassSpatialCompiler {
     this.updateFloorplanEntities({
       floor: activeFloor,
       slabBounds,
-      rooms: intent.rooms,
-      furniture: furnitureSolverResult.placedItems,
+      rooms: sanitized.rooms,
+      furniture: sanitized.furniture.map(item => ({ ...item, y: item.cy })),
       stairs: stairSyncResult.stairsByFloor[activeFloor.id] || []
     });
+
+    activeFloor.metadata.roomGrid = true;
+    activeFloor.rooms = sanitized.rooms;
+    activeFloor.furniture = sanitized.furniture;
+    activeFloor.sanitary = sanitized.sanitary;
+    activeFloor.stairs = stairSyncResult.stairsByFloor[activeFloor.id] || [];
+    if (authoredGrid) {
+      activeFloor.entities = [...authoredStructure, ...activeFloor.entities.filter(entity => !structuralLayers.has(entity.layer))];
+    } else {
+      activeFloor.interiorWalls = walls;
+      activeFloor.doors = doors;
+      activeFloor.entities = activeFloor.entities.filter(entity => !['A-WALL-INTR', 'A-DOOR'].includes(entity.layer));
+      activeFloor.entities.push(...walls.map(wall => ({ type: 'LINE', layer: 'A-WALL-INTR', points: [wall.p1, wall.p2] })));
+      activeFloor.entities.push(...doors.map(door => ({ ...door, type: 'POINT', layer: 'A-DOOR', points: [{ x: door.x, y: door.y }] })));
+    }
 
     // Recalculate project totals
     project.total_floor_area = project.calculateTotalArea();
@@ -325,8 +386,8 @@ export class TwoPassSpatialCompiler {
       let floor = project.getFloor(floorId);
       if (!floor) {
         const prevFloor = project.floors[project.floors.length - 1];
-        const elevation = prevFloor ? (prevFloor.elevation + prevFloor.height) : ((num - 1) * 3.6);
-        const storyHeight = num >= 4 ? 3.3 : 3.6;
+        const elevation = prevFloor ? (prevFloor.elevation + prevFloor.height) : ((num - 1) * 3.2);
+        const storyHeight = 3.2;
 
         let floorDesc = intent.rooms.map(r => r.name).join(', ');
         if (!floorDesc) floorDesc = 'Phòng thờ gia tiên, Sân thượng cảnh quan & Giặt phơi';
@@ -462,7 +523,42 @@ export class TwoPassSpatialCompiler {
       }
     }
 
-    return { wallsClamped, cornersClosed };
+    // T-junction & X-junction intersection cleanup pass
+    let tJunctionsCleaned = 0;
+    for (let i = 0; i < wallEntities.length; i++) {
+      const w1 = wallEntities[i];
+      if (!w1.points || w1.points.length < 2) continue;
+      const pts1 = [w1.points[0], w1.points[1] || w1.end];
+
+      for (let j = 0; j < wallEntities.length; j++) {
+        if (i === j) continue;
+        const w2 = wallEntities[j];
+        if (!w2.points || w2.points.length < 2) continue;
+        const pA = w2.points[0];
+        const pB = w2.points[1] || w2.end;
+        const dx = pB.x - pA.x;
+        const dy = pB.y - pA.y;
+        const lenSq = dx * dx + dy * dy;
+        if (lenSq < 1e-6) continue;
+
+        for (const pt of pts1) {
+          const t = ((pt.x - pA.x) * dx + (pt.y - pA.y) * dy) / lenSq;
+          if (t >= -0.05 && t <= 1.05) {
+            const clampedT = Math.max(0, Math.min(1, t));
+            const projX = pA.x + clampedT * dx;
+            const projY = pA.y + clampedT * dy;
+            const dist = Math.hypot(pt.x - projX, pt.y - projY);
+            if (dist > 0.001 && dist <= snapTolerance) {
+              pt.x = Math.round(projX * 100) / 100;
+              pt.y = Math.round(projY * 100) / 100;
+              tJunctionsCleaned++;
+            }
+          }
+        }
+      }
+    }
+
+    return { wallsClamped, cornersClosed, tJunctionsCleaned };
   }
 
   /**
@@ -488,19 +584,26 @@ export class TwoPassSpatialCompiler {
       stairsByFloor[fl.id] = [];
 
       // Check existing stair entities
-      const stairEntity = fl.entities.find(e =>
+      const treadPoints = fl.entities.filter(e => e.layer === 'A-STAIR').flatMap(e => e.points || []);
+      const stairEntity = fl.stairs?.[0] || fl.entities.find(e =>
         e.layer === 'A-FLOR-STRS' ||
         (e.asset_id && e.asset_id.startsWith('stair_'))
       );
 
       if (stairEntity) {
+        const xs = treadPoints.map(point => point.x);
+        const zs = treadPoints.map(point => point.y);
+        const footprint = treadPoints.length ? {
+          x: (Math.min(...xs) + Math.max(...xs)) / 2, y: (Math.min(...zs) + Math.max(...zs)) / 2,
+          width: Math.max(...xs) - Math.min(...xs), depth: Math.max(...zs) - Math.min(...zs)
+        } : {};
         stairsByFloor[fl.id].push({
           id: `${fl.id}_stair`,
           asset_id: stairEntity.asset_id || defaultStairConfig.asset_id,
-          x: stairEntity.x ?? (project.lot_width * 0.5),
-          y: stairEntity.y ?? (project.lot_length * 0.5),
-          width: stairEntity.width || defaultStairConfig.width,
-          depth: stairEntity.depth || defaultStairConfig.depth,
+          x: stairEntity.x ?? footprint.x ?? (project.lot_width * 0.5),
+          y: stairEntity.y ?? footprint.y ?? (project.lot_length * 0.5),
+          width: stairEntity.width || footprint.width || defaultStairConfig.width,
+          depth: stairEntity.depth || footprint.depth || defaultStairConfig.depth,
           rotation: stairEntity.rotation || 0
         });
       } else if (idx < project.floors.length - 1) {
@@ -607,6 +710,21 @@ export class TwoPassSpatialCompiler {
       radius: 1.1
     };
 
+    // Extract window openings for semantic collision checking
+    const floorWindows = [];
+    if (Array.isArray(floor.windows) && floor.windows.length > 0) {
+      floorWindows.push(...floor.windows);
+    } else if (Array.isArray(floor.entities)) {
+      for (const ent of floor.entities) {
+        if (ent.layer === 'A-GLAZ' && Array.isArray(ent.points) && ent.points.length >= 2) {
+          floorWindows.push({
+            p1: ent.points[0],
+            p2: ent.end || ent.points[1]
+          });
+        }
+      }
+    }
+
     for (const req of requestedFurniture) {
       const assetId = req.asset_id;
       const catalogEntry = catalogMap.get(assetId);
@@ -641,6 +759,37 @@ export class TwoPassSpatialCompiler {
           cx = slabBounds.minX + width / 2 + 0.35;
           cy = slabBounds.minY + depth / 2 + 0.3;
           rotation = Math.PI / 2;
+        } else if (assetId === 'tv_cabinet_wall_unit' || assetId.includes('tv')) {
+          // TV Unit placement: face the sofa or bed if already placed, otherwise back against East wall
+          const sofa = placedItems.find(it => it.asset_id && it.asset_id.includes('sofa'));
+          const bed = placedItems.find(it => it.asset_id && it.asset_id.includes('bed'));
+          if (sofa) {
+            // Place on opposite wall facing sofa
+            if (sofa.cx < (slabBounds.minX + slabBounds.maxX) / 2) {
+              cx = slabBounds.maxX - depth / 2 - 0.25;
+              cy = sofa.cy;
+              rotation = -Math.PI / 2;
+            } else {
+              cx = slabBounds.minX + depth / 2 + 0.25;
+              cy = sofa.cy;
+              rotation = Math.PI / 2;
+            }
+          } else if (bed) {
+            // Place on opposite wall facing bed
+            if (bed.cy > (slabBounds.minY + slabBounds.maxY) / 2) {
+              cx = bed.cx;
+              cy = slabBounds.minY + depth / 2 + 0.25;
+              rotation = 0;
+            } else {
+              cx = bed.cx;
+              cy = slabBounds.maxY - depth / 2 - 0.25;
+              rotation = Math.PI;
+            }
+          } else {
+            cx = slabBounds.maxX - depth / 2 - 0.25;
+            cy = (slabBounds.minY + slabBounds.maxY) / 2;
+            rotation = -Math.PI / 2;
+          }
         } else if (assetId.includes('bed')) {
           // Bed headboard backs against North or East wall
           cx = slabBounds.minX + width / 2 + 0.4;
@@ -673,13 +822,16 @@ export class TwoPassSpatialCompiler {
       let attempts = 0;
       let collides = true;
 
-      while (collides && attempts < 12) {
+      while (collides && attempts < 16) {
         collides = false;
+        const isRot = Math.abs(Math.sin(rotation)) > 0.7;
+        const spanX = isRot ? depth : width;
+        const spanY = isRot ? width : depth;
         const box = {
-          minX: cx - width / 2 - 0.1,
-          maxX: cx + width / 2 + 0.1,
-          minY: cy - depth / 2 - 0.1,
-          maxY: cy + depth / 2 + 0.1
+          minX: cx - spanX / 2 - 0.1,
+          maxX: cx + spanX / 2 + 0.1,
+          minY: cy - spanY / 2 - 0.1,
+          maxY: cy + spanY / 2 + 0.1
         };
 
         // Check door swing clearance
@@ -688,6 +840,57 @@ export class TwoPassSpatialCompiler {
           collides = true;
           cx += 0.6; // Nudge away from door swing
           collisionsAvoided++;
+        }
+
+        // Semantic Check: Check window openings (guarantee TV and wall units NEVER occlude windows)
+        for (const win of floorWindows) {
+          if (!win.p1 || !win.p2) continue;
+          const wMinX = Math.min(win.p1.x, win.p2.x);
+          const wMaxX = Math.max(win.p1.x, win.p2.x);
+          const wMinY = Math.min(win.p1.y, win.p2.y);
+          const wMaxY = Math.max(win.p1.y, win.p2.y);
+          const isWinVert = Math.abs(win.p2.x - win.p1.x) < Math.abs(win.p2.y - win.p1.y);
+
+          const aabbOverlap = !(box.maxX < wMinX - 0.25 || box.minX > wMaxX + 0.25 || box.maxY < wMinY - 0.25 || box.minY > wMaxY + 0.25);
+          let sameWallOverlap = false;
+          if (isRot && isWinVert) {
+            const distToWall = Math.abs(cx - (win.p1.x + win.p2.x) / 2);
+            if (distToWall < 1.25) {
+              sameWallOverlap = !(box.maxY < wMinY - 0.15 || box.minY > wMaxY + 0.15);
+            }
+          } else if (!isRot && !isWinVert) {
+            const distToWall = Math.abs(cy - (win.p1.y + win.p2.y) / 2);
+            if (distToWall < 1.25) {
+              sameWallOverlap = !(box.maxX < wMinX - 0.15 || box.minX > wMaxX + 0.15);
+            }
+          }
+
+          if (aabbOverlap || sameWallOverlap) {
+            collides = true;
+            collisionsAvoided++;
+            if (isRot) {
+              cy += 1.4;
+              if (cy + spanY / 2 > slabBounds.maxY - 0.2) {
+                // Switch to opposite wall
+                cx = (cx > (slabBounds.minX + slabBounds.maxX) / 2)
+                  ? (slabBounds.minX + depth / 2 + 0.25)
+                  : (slabBounds.maxX - depth / 2 - 0.25);
+                cy = slabBounds.minY + spanY / 2 + 0.3;
+                rotation = (rotation + Math.PI) % (2 * Math.PI);
+              }
+            } else {
+              cx += 1.4;
+              if (cx + spanX / 2 > slabBounds.maxX - 0.2) {
+                // Switch to opposite wall
+                cy = (cy > (slabBounds.minY + slabBounds.maxY) / 2)
+                  ? (slabBounds.minY + depth / 2 + 0.25)
+                  : (slabBounds.maxY - depth / 2 - 0.25);
+                cx = slabBounds.minX + spanX / 2 + 0.3;
+                rotation = (rotation + Math.PI) % (2 * Math.PI);
+              }
+            }
+            break;
+          }
         }
 
         // Check against occupied bounding boxes
@@ -705,8 +908,8 @@ export class TwoPassSpatialCompiler {
         }
 
         // Keep inside slab boundary
-        cx = Math.max(slabBounds.minX + width / 2 + 0.1, Math.min(slabBounds.maxX - width / 2 - 0.1, cx));
-        cy = Math.max(slabBounds.minY + depth / 2 + 0.1, Math.min(slabBounds.maxY - depth / 2 - 0.1, cy));
+        cx = Math.max(slabBounds.minX + spanX / 2 + 0.1, Math.min(slabBounds.maxX - spanX / 2 - 0.1, cx));
+        cy = Math.max(slabBounds.minY + spanY / 2 + 0.1, Math.min(slabBounds.maxY - spanY / 2 - 0.1, cy));
         attempts++;
       }
 
@@ -834,14 +1037,98 @@ export class TwoPassSpatialCompiler {
     // 7. Room labels (A-AREA-ROOM)
     for (let i = 0; i < rooms.length; i++) {
       const rm = rooms[i];
-      const yOffset = slabBounds.minY + ((i + 0.5) / rooms.length) * (slabBounds.maxY - slabBounds.minY);
+      const yOffset = rm.y ?? slabBounds.minY + ((i + 0.5) / rooms.length) * (slabBounds.maxY - slabBounds.minY);
       entities.push({
         type: 'TEXT',
         layer: 'A-AREA-ROOM',
-        text: `${rm.name} (${rm.minArea || 15} m²)`,
-        points: [{ x: (slabBounds.minX + slabBounds.maxX) / 2, y: yOffset }]
+        text: `${rm.name} (${rm.area || rm.minArea || 15} m²)`,
+        points: [{ x: rm.x ?? (slabBounds.minX + slabBounds.maxX) / 2, y: yOffset }]
       });
     }
+
+    // 8. Architectural Grid (A-GRID) with Dash-dot linetype & bubbles
+    const gridX = [slabBounds.minX, slabBounds.maxX];
+    const gridY = [slabBounds.minY, slabBounds.maxY];
+    if (rooms.length > 1) {
+      gridY.splice(1, 0, (slabBounds.minY + slabBounds.maxY) * 0.45);
+    }
+    // X-Axes (Trục số: 1, 2...)
+    gridX.forEach((gx, idx) => {
+      const label = (idx + 1).toString();
+      entities.push({
+        type: 'LINE',
+        layer: 'A-GRID',
+        linetype: 'DASHDOT',
+        label,
+        points: [
+          { x: gx, y: slabBounds.minY - 1.2 },
+          { x: gx, y: slabBounds.maxY + 1.2 }
+        ]
+      });
+      entities.push({
+        type: 'CIRCLE',
+        layer: 'A-GRID',
+        radius: 0.32,
+        label,
+        points: [{ x: gx, y: slabBounds.minY - 1.2 }]
+      });
+      entities.push({
+        type: 'CIRCLE',
+        layer: 'A-GRID',
+        radius: 0.32,
+        label,
+        points: [{ x: gx, y: slabBounds.maxY + 1.2 }]
+      });
+    });
+    // Y-Axes (Trục chữ: A, B...)
+    const gridLetters = ['A', 'B', 'C', 'D'];
+    gridY.forEach((gy, idx) => {
+      const label = gridLetters[idx % gridLetters.length];
+      entities.push({
+        type: 'LINE',
+        layer: 'A-GRID',
+        linetype: 'DASHDOT',
+        label,
+        points: [
+          { x: slabBounds.minX - 1.2, y: gy },
+          { x: slabBounds.maxX + 1.2, y: gy }
+        ]
+      });
+      entities.push({
+        type: 'CIRCLE',
+        layer: 'A-GRID',
+        radius: 0.32,
+        label,
+        points: [{ x: slabBounds.minX - 1.2, y: gy }]
+      });
+      entities.push({
+        type: 'CIRCLE',
+        layer: 'A-GRID',
+        radius: 0.32,
+        label,
+        points: [{ x: slabBounds.maxX + 1.2, y: gy }]
+      });
+    });
+
+    // 9. Dimensions (A-DIMS) in millimeters
+    entities.push({
+      type: 'DIMENSION',
+      layer: 'A-DIMS',
+      dimType: 'ALIGNED',
+      value: Math.round((slabBounds.maxX - slabBounds.minX) * 1000),
+      label: `${Math.round((slabBounds.maxX - slabBounds.minX) * 1000)}`,
+      p1: { x: slabBounds.minX, y: slabBounds.minY - 0.6 },
+      p2: { x: slabBounds.maxX, y: slabBounds.minY - 0.6 }
+    });
+    entities.push({
+      type: 'DIMENSION',
+      layer: 'A-DIMS',
+      dimType: 'ALIGNED',
+      value: Math.round((slabBounds.maxY - slabBounds.minY) * 1000),
+      label: `${Math.round((slabBounds.maxY - slabBounds.minY) * 1000)}`,
+      p1: { x: slabBounds.minX - 0.6, y: slabBounds.minY },
+      p2: { x: slabBounds.minX - 0.6, y: slabBounds.maxY }
+    });
 
     floor.entities = entities;
 
@@ -851,9 +1138,8 @@ export class TwoPassSpatialCompiler {
       confidence: 0.98,
       timestamp: new Date().toISOString(),
       rooms: rooms.map(r => ({
-        name: r.name,
-        zone: r.zone,
-        areaM2: r.minArea || 16.0
+        ...r,
+        areaM2: r.area || r.minArea || 16.0
       })),
       metrics: {
         grossAreaM2: Math.round((slabBounds.maxX - slabBounds.minX) * (slabBounds.maxY - slabBounds.minY) * 10) / 10,
@@ -862,6 +1148,7 @@ export class TwoPassSpatialCompiler {
         hasStairs: stairs.length > 0
       },
       furniture: furniture.map(f => ({
+        ...f,
         asset_id: f.asset_id,
         name: f.name,
         type: f.type,

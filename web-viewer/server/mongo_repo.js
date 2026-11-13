@@ -102,6 +102,7 @@ export class MongoProjectRepository extends ProjectRepository {
       ? projectData
       : ProjectDocument.fromJSON(projectData);
 
+    for (const floor of project.floors) floor.sanitizeLayout();
     const validation = project.validate();
     if (!validation.valid) {
       throw new Error(`Invalid project: ${validation.errors.join('; ')}`);
@@ -158,6 +159,8 @@ export class MongoProjectRepository extends ProjectRepository {
 
     let seeded = 0;
     for (const p of projects) {
+      const existing = await this.findById(p.id);
+      if (p.metadata?.seedRevision && existing?.metadata?.seedRevision >= p.metadata.seedRevision) continue;
       await this.save(p);
       seeded++;
     }

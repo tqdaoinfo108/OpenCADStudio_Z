@@ -12,6 +12,16 @@
 
   <link rel="stylesheet" href="./css/style.css">
 
+  <script>
+    // Immediate early activation for Client Viewer Mode (?mode=viewer)
+    if (new URLSearchParams(window.location.search).get('mode') === 'viewer') {
+      document.documentElement.classList.add('mode-viewer');
+      window.addEventListener('DOMContentLoaded', () => {
+        document.body.classList.add('mode-viewer', 'presentation-mode');
+      });
+    }
+  </script>
+
   <!-- Three.js Import Map (Local vendored ESM with CDN fallback) -->
   <script type="importmap">
   {
@@ -36,19 +46,20 @@
       <div class="brand-text-container">
         <div class="brand-title">
           Nếp Nhà | Hồ sơ kiến trúc
-          <span class="brand-tag">Dollhouse 3D</span>
+          
         </div>
-        <div class="brand-subtitle">Interactive 3D Architectural Web Viewer kết nối OpenCADStudio</div>
+        <div class="brand-subtitle">Architectural Studio</div>
       </div>
     </div>
 
-    <div class="header-actions">
+    <button type="button" id="studio-tools-toggle" class="btn-header-secondary" aria-expanded="false" aria-controls="studio-header-actions">Công cụ</button>
+    <div class="header-actions" id="studio-header-actions">
       <!-- Project List & Switcher Button -->
       <button class="btn-header-secondary" id="btn-projects-list" title="Danh sách các dự án kiến trúc">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <path d="M3 7v10a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-6l-2-2H5a2 2 0 0 0-2 2z"></path>
         </svg>
-        <span>Danh sách Dự án</span>
+        <span>Dự án</span>
         <span class="badge-count" id="header-projects-count">3</span>
       </button>
 
@@ -58,7 +69,7 @@
           <line x1="12" y1="5" x2="12" y2="19"></line>
           <line x1="5" y1="12" x2="19" y2="12"></line>
         </svg>
-        <span>+ Tạo Dự Án Mới</span>
+        <span>Tạo dự án</span>
       </button>
 
       <!-- Hidden CAD File Input -->
@@ -70,7 +81,7 @@
           <polyline points="17 8 12 3 7 8"></polyline>
           <line x1="12" y1="3" x2="12" y2="15"></line>
         </svg>
-        📂 Nhập file CAD (.dxf)
+        Nhập CAD
       </button>
 
       <!-- Modular Furniture Store Button -->
@@ -88,9 +99,19 @@
         <span>💬 Trợ Lý AI</span>
       </button>
 
+      <!-- Copy Client Viewer Link Button -->
+      <button class="btn-header-secondary" id="btn-copy-client-link" title="Sao chép đường dẫn hồ sơ khách hàng (Client Presentation Mode)">
+        <span>Sao chép link khách</span>
+      </button>
+
+      <!-- Cinematic 3D Video Exporter Button -->
+      <button class="btn-header-secondary" id="btn-export-video" title="Xuất Video 3D toàn cảnh hoặc quay phim kiến trúc">
+        <span>🎬 Xuất Video 3D</span>
+      </button>
+
       <!-- Fullscreen Presentation Viewer Mode Button -->
       <button class="btn-header-presentation" id="btn-presentation-mode" title="Mở Viewer Trình Chiếu (Fullscreen Viewer)">
-        <span>🖥️ Mở Viewer Trình Chiếu</span>
+        <span>Trình chiếu</span>
       </button>
 
       <button class="btn-icon" id="btn-fullscreen" title="Toàn màn hình">
@@ -105,8 +126,27 @@
   <main class="app-container">
     
     <!-- Left Sidebar: Project Dossier & Floor Controls -->
-    <aside class="sidebar">
+    <aside class="sidebar" id="sidebar-left">
+      <div class="floor-sheet-header">
+        <span class="floor-sheet-title" id="floor-sheet-title">Nếp Nhà</span>
+        <div class="floor-quick-list" id="floor-quick-list" aria-label="Chọn tầng"></div>
+        <button type="button" class="floor-sheet-toggle" aria-expanded="false" aria-controls="floor-list-container">Mở hồ sơ</button>
+      </div>
       
+      <!-- Elegant Dossier Branding (Logo & Tiêu đề "Nếp Nhà | Hồ sơ kiến trúc") -->
+      <div class="sidebar-brand-header" id="sidebar-brand-header">
+        <div class="sidebar-brand-logo">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
+            <polyline points="9 22 9 12 15 12 15 22"></polyline>
+          </svg>
+        </div>
+        <div class="sidebar-brand-text">
+          <div class="sidebar-brand-title">Nếp Nhà | Hồ sơ kiến trúc</div>
+          <div class="sidebar-brand-subtitle">Interactive 3D Architectural Dossier</div>
+        </div>
+      </div>
+
       <!-- Project Metadata Card -->
       <div class="project-info-card">
         <div class="project-meta-sub" id="project-subtitle">HỒ SƠ THIẾT KẾ THI CÔNG</div>
@@ -180,7 +220,7 @@
       <!-- Top-Left Dossier Badge -->
       <div class="hud-dossier-card">
         <span class="dossier-badge" id="project-code-badge">NN-2026-BT08</span>
-        <span style="font-size: 12px; font-weight: 600; color: #4B5563;">Hồ sơ kiến trúc & Kết cấu 3D</span>
+        <span class="hud-dossier-subtext">Hồ sơ kiến trúc & Kết cấu 3D</span>
         <span class="asset-preload-badge" id="asset-preload-badge" title="Thư viện mô hình 3D glTF 2.0 (.glb)">35 GLB</span>
       </div>
 
@@ -215,19 +255,6 @@
         </div>
       </div>
 
-      <!-- Top-Right Floating Toggles -->
-      <div class="hud-toggles">
-        <button class="toggle-pill-btn active" id="toggle-interior-lights" title="Bật/Tắt đèn chiếu sáng trần nhà">
-          <span class="toggle-dot"></span>
-          <span class="label">Đèn nhà: BẬT</span>
-        </button>
-
-        <button class="toggle-pill-btn active" id="toggle-room-labels" title="Bật/Tắt nhãn phòng 3D">
-          <span class="toggle-dot"></span>
-          <span class="label">Nhãn phòng: BẬT</span>
-        </button>
-      </div>
-
       <!-- Floating Separation Slider for Tách tầng (Exploded View) -->
       <div class="hud-exploded-card hidden" id="exploded-slider-card">
         <div class="slider-header-row">
@@ -237,21 +264,53 @@
         <input type="range" id="exploded-distance-slider" min="0" max="10" step="0.5" value="4.5" class="architectural-range">
       </div>
 
-      <!-- Center-Bottom 3D View Modes Toolbar -->
-      <div class="hud-bottom-toolbar">
-        <button class="mode-btn active" data-view-mode="dollhouse" title="Góc nhìn cắt lớp Dollhouse nhìn xuyên vào nội thất">
-          🌐 Tổng thể
-        </button>
-        <button class="mode-btn" data-view-mode="facade" title="Góc nhìn ngoại thất mặt tiền đầy đủ">
-          🏢 Mặt tiền
-        </button>
-        <button class="mode-btn" data-view-mode="exploded" title="Tách tầng theo phương thẳng đứng">
-          📑 Tách tầng
-        </button>
-        <button class="mode-btn" data-view-mode="walkthrough" title="Đi bộ tham quan bên trong nhà (WASD)">
-          🚶 Đi trong nhà
-        </button>
-      </div>
+      <!-- Floating Control Dock (Consolidated 3D Viewport Controls) -->
+      <nav class="floating-control-dock hud-bottom-toolbar bottom-4 left-1/2 -translate-x-1/2 z-50 flex items-center" id="floating-control-dock" aria-label="3D Viewport Controls">
+        <!-- View Mode Buttons -->
+        <div class="dock-group dock-modes">
+          <button class="mode-btn active" data-view-mode="dollhouse" title="Góc nhìn cắt lớp Dollhouse nhìn xuyên vào nội thất">
+            <span class="dock-icon">🌐</span>
+            <span class="dock-label">Tổng thể</span>
+          </button>
+          <button class="mode-btn" data-view-mode="facade" title="Góc nhìn ngoại thất mặt tiền đầy đủ">
+            <span class="dock-icon">🏢</span>
+            <span class="dock-label">Mặt tiền</span>
+          </button>
+          <button class="mode-btn" data-view-mode="exploded" title="Tách tầng theo phương thẳng đứng">
+            <span class="dock-icon">📑</span>
+            <span class="dock-label">Tách tầng</span>
+          </button>
+          <button class="mode-btn" data-view-mode="walkthrough" title="Đi bộ tham quan bên trong nhà (WASD)">
+            <span class="dock-icon">🚶</span>
+            <span class="dock-label">Đi trong nhà</span>
+          </button>
+        </div>
+
+        <div class="dock-divider"></div>
+
+        <!-- Toggles & Quick Actions -->
+        <div class="dock-group dock-toggles">
+          <button class="toggle-pill-btn dock-btn active" id="toggle-interior-lights" title="Bật/Tắt đèn chiếu sáng ấm áp (3000K)">
+            <span class="toggle-dot lamp-dot"></span>
+            <span class="label">🟠 Đèn nhà: BẬT</span>
+          </button>
+
+          <button class="toggle-pill-btn dock-btn" id="toggle-room-labels" title="Bật/Tắt nhãn phòng 3D">
+            <span class="toggle-dot"></span>
+            <span class="label">Nhãn phòng: TẮT</span>
+          </button>
+
+          <button class="toggle-pill-btn dock-btn" id="btn-view-tour-3d" title="Khởi động chuyến tham quan Tour 3D tự động">
+            <span class="toggle-icon">🎬</span>
+            <span class="label">Tour 3D</span>
+          </button>
+
+          <button class="toggle-pill-btn dock-btn" id="btn-viewport-fullscreen" title="Phóng to toàn màn hình">
+            <span class="toggle-icon">⛶</span>
+            <span class="label">Toàn màn hình</span>
+          </button>
+        </div>
+      </nav>
 
       <!-- Selected Object Inspector Card -->
       <div class="object-inspector-card hidden" id="object-inspector-card">
@@ -277,14 +336,30 @@
         </div>
       </div>
 
-      <!-- Subtle Floating Top-Right Presentation Mode Toolbar -->
-      <div class="presentation-toolbar hidden" id="presentation-toolbar">
-        <button class="btn-presentation-back btn-return-studio" id="btn-exit-presentation" data-action="return-studio" title="Quay lại giao diện Studio">
-          <span>← Về Studio</span>
-        </button>
-        <button class="btn-presentation-fs" id="btn-presentation-fullscreen" title="Toàn màn hình trình chiếu">
-          <span>⛶ Toàn màn hình</span>
-        </button>
+      <!-- Floating Cinematic Live Tour HUD Overlay -->
+      <div class="cinematic-live-hud hidden" id="cinematic-live-hud">
+        <div class="live-hud-top-bar">
+          <div class="live-hud-badge-title">
+            <span class="live-hud-badge" id="live-hud-badge">🎬 ĐIỆN ẢNH</span>
+            <span class="live-hud-title" id="live-hud-title">Phim Toàn Cảnh Điện Ảnh</span>
+          </div>
+          <div class="live-hud-controls">
+            <button class="btn-live-hud" id="btn-live-hud-pause"><span>⏸️ Tạm Dừng</span></button>
+            <button class="btn-live-hud" id="btn-live-hud-replay"><span>🔄 Xem Lại</span></button>
+            <button class="btn-live-hud btn-live-hud-export" id="btn-live-hud-export"><span>🎬 Xuất Video</span></button>
+            <button class="btn-live-hud btn-live-hud-exit" id="btn-live-hud-exit" title="Dừng Tour">✕</button>
+          </div>
+        </div>
+        <div class="live-hud-progress-track" id="live-hud-progress-track" title="Nhấp để chuyển đoạn">
+          <div class="live-hud-progress-bar" id="live-hud-progress-bar"></div>
+        </div>
+        <div class="live-hud-bottom-bar">
+          <div class="live-hud-captions">
+            <div class="live-hud-caption" id="live-hud-caption">Cảnh Quan Ngoại Thất & Mặt Tiền Sân Vườn</div>
+            <div class="live-hud-subcaption" id="live-hud-subcaption">Sân vườn đá bước dạo, thảm cỏ xanh kết hợp vỉa hè trước nhà</div>
+          </div>
+          <div class="live-hud-time" id="live-hud-time">00:00 / 00:30</div>
+        </div>
       </div>
 
     </section>
@@ -364,8 +439,6 @@
         </button>
       </div>
     </aside>
-
-    </section>
 
   </main>
 
@@ -571,76 +644,362 @@
     </div>
   </div>
 
-  <!-- Modal: Kho Mô Hình Nội Thất (Modular Furniture Store) -->
+  <!-- Modal: Kho Mô Hình Nội Thất (Modular Furniture Store & 3D Inspector Studio) -->
   <div class="blueprint-modal hidden" id="modal-furniture-store">
-    <div class="modal-content modal-furniture-content">
-      <div class="modal-header">
+    <div class="modal-content modal-furniture-content modal-furniture-studio-content">
+      <div class="modal-header modal-furniture-studio-header">
         <div class="modal-title-group">
-          <h3 class="modal-title">🛋️ KHO MÔ HÌNH NỘI THẤT MODULAR (glTF 2.0 / .glb)</h3>
-          <span class="badge-count" id="furniture-store-count">35 mẫu</span>
+          <div class="modal-title-main">
+            <span class="studio-logo-icon">🛋️</span>
+            <h3 class="modal-title" id="furniture-store-modal-title">KHO NỘI THẤT MODULAR &amp; 3D ASSET STUDIO</h3>
+            <span class="badge-count" id="furniture-store-count">48 mẫu</span>
+            <span class="studio-sub-badge">glTF 2.0 / AI Auto-Solver</span>
+          </div>
+          <p class="modal-subtitle">Chọn một mẫu để xoay 360° và kiểm tra kích thước.</p>
         </div>
         <div class="modal-header-actions">
-          <button class="btn-create-shortcut" id="btn-open-add-furniture">
+          <button class="btn-create-shortcut" id="btn-generate-furniture" type="button">✨ AI Tạo Nội Thất 3D Mới</button>
+          <button class="btn-create-shortcut btn-studio-add" id="btn-open-add-furniture">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <line x1="12" y1="5" x2="12" y2="19"></line>
               <line x1="5" y1="12" x2="19" y2="12"></line>
             </svg>
-            + Thêm Mẫu Mới (.glb)
+            + Tải lên mẫu .glb mới
           </button>
-          <button class="modal-close" id="modal-furniture-close-btn">✕</button>
+          <button class="modal-close" id="modal-furniture-close-btn" title="Đóng cửa sổ">✕</button>
         </div>
       </div>
 
-      <!-- Filters & Search Toolbar -->
-      <div class="store-filter-bar">
-        <div class="store-category-tabs">
-          <button class="store-tab-btn active" data-category="all">Tất cả</button>
-          <button class="store-tab-btn" data-category="living">🛋️ Phòng khách</button>
-          <button class="store-tab-btn" data-category="kitchen">🍳 Bếp & ăn</button>
-          <button class="store-tab-btn" data-category="bedroom">🛏️ Phòng ngủ</button>
-          <button class="store-tab-btn" data-category="worship">🕯️ Phòng thờ</button>
-          <button class="store-tab-btn" data-category="bathroom">🚿 WC & giặt</button>
-          <button class="store-tab-btn" data-category="balcony">🌿 Ban công & ngoại thất</button>
-        </div>
-        <div class="store-search-row">
-          <div class="store-search-wrap">
-            <input type="text" id="furniture-store-search" class="store-search-input" placeholder="🔍 Tìm kiếm theo tên, mã model hoặc tag...">
+      <!-- Main 3-Column Studio Body -->
+      <div class="modal-body modal-furniture-studio-body">
+        
+        <!-- ================= CỘT 1: SIDEBAR BỘ LỌC & THỐNG KÊ KHO ================= -->
+        <aside class="store-studio-col store-studio-sidebar" id="furniture-studio-sidebar">
+          
+          <!-- Thống kê kho tổng quan -->
+          <div class="sidebar-section sidebar-stats-section">
+            <div class="sidebar-section-title">📊 THỐNG KÊ TÀI NGUYÊN</div>
+            <div class="store-stats-grid">
+              <div class="store-stat-box">
+                <span class="stat-value" id="stat-total-assets">38</span>
+                <span class="stat-label">Tổng số mẫu</span>
+              </div>
+              <div class="store-stat-box">
+                <span class="stat-value" id="count-type-model">35</span>
+                <span class="stat-label">Mô hình 3D</span>
+              </div>
+              <div class="store-stat-box">
+                <span class="stat-value highlight-green" id="stat-ai-ready">100%</span>
+                <span class="stat-label">Chuẩn hóa AI</span>
+              </div>
+            </div>
           </div>
-          <select id="furniture-store-placement-filter" class="store-placement-select">
-            <option value="all">Quy tắc bố trí (Tất cả)</option>
-            <option value="floor_wall_backed">🧱 Tựa tường (floor_wall_backed)</option>
-            <option value="floor_center">📍 Giữa sàn / Tự do (floor_center)</option>
-            <option value="wall_mounted">📌 Treo tường (wall_mounted)</option>
-            <option value="ceiling">💡 Gắn trần (ceiling)</option>
-          </select>
-        </div>
-      </div>
 
-      <div class="modal-body modal-furniture-body">
-        <div class="furniture-store-grid" id="furniture-store-grid">
-          <!-- Dynamically populated by furniture_store_modal.js -->
-        </div>
+          <!-- Tìm kiếm tức thì -->
+          <div class="sidebar-section">
+            <div class="sidebar-section-title">🔍 TÌM KIẾM TỨC THÌ</div>
+            <div class="store-search-wrap">
+              <input type="text" id="furniture-store-search" class="store-search-input" placeholder="Tìm tên, asset_id, tag...">
+              <button class="btn-clear-search hidden" id="btn-clear-search" title="Xóa tìm kiếm">✕</button>
+            </div>
+          </div>
+
+          <!-- Dual-Mode Type Selector -->
+          <div class="sidebar-section">
+            <div class="sidebar-section-title">📦 LOẠI TÀI NGUYÊN</div>
+            <div class="store-type-tabs">
+              <button class="store-type-tab-btn active" data-type="all" id="tab-store-type-all">
+                <span class="type-icon">📦</span>
+                <span class="type-label">Tất cả</span>
+                <span class="type-count-badge" id="count-type-all">38</span>
+              </button>
+              <button class="store-type-tab-btn" data-type="model" id="tab-store-type-model">
+                <span class="type-icon">🧊</span>
+                <span class="type-label">3D .glb</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Danh mục không gian kèm số lượng -->
+          <div class="sidebar-section">
+            <div class="sidebar-section-title">🏠 PHÂN LOẠI KHÔNG GIAN</div>
+            <div class="store-vertical-filter-list store-category-tabs" id="store-category-list">
+              <button class="store-tab-btn store-filter-item active" data-category="all">
+                <span class="filter-item-left"><span class="filter-icon">🏢</span> Tất cả không gian</span>
+                <span class="cat-count-badge" id="cat-count-all">38</span>
+              </button>
+              <button class="store-tab-btn store-filter-item" data-category="living">
+                <span class="filter-item-left"><span class="filter-icon">🛋️</span> Phòng khách</span>
+                <span class="cat-count-badge" id="cat-count-living">12</span>
+              </button>
+              <button class="store-tab-btn store-filter-item" data-category="kitchen">
+                <span class="filter-item-left"><span class="filter-icon">🍳</span> Bếp &amp; phòng ăn</span>
+                <span class="cat-count-badge" id="cat-count-kitchen">6</span>
+              </button>
+              <button class="store-tab-btn store-filter-item" data-category="bedroom">
+                <span class="filter-item-left"><span class="filter-icon">🛏️</span> Phòng ngủ</span>
+                <span class="cat-count-badge" id="cat-count-bedroom">7</span>
+              </button>
+              <button class="store-tab-btn store-filter-item" data-category="worship">
+                <span class="filter-item-left"><span class="filter-icon">🕯️</span> Phòng thờ</span>
+                <span class="cat-count-badge" id="cat-count-worship">3</span>
+              </button>
+              <button class="store-tab-btn store-filter-item" data-category="bathroom">
+                <span class="filter-item-left"><span class="filter-icon">🚿</span> WC &amp; phòng tắm</span>
+                <span class="cat-count-badge" id="cat-count-bathroom">4</span>
+              </button>
+              <button class="store-tab-btn store-filter-item" data-category="balcony">
+                <span class="filter-item-left"><span class="filter-icon">🌿</span> Ban công &amp; ngoại thất</span>
+                <span class="cat-count-badge" id="cat-count-balcony">6</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Lọc Quy tắc neo giữ AI (mount_type) -->
+          <div class="sidebar-section">
+            <div class="sidebar-section-title">🧭 QUY TẮC NEO GIỮ AI (MOUNT TYPE)</div>
+            <div class="store-vertical-filter-list store-placement-list" id="store-placement-list">
+              <button class="store-placement-btn store-filter-item active" data-placement="all">
+                <span class="filter-item-left"><span class="filter-icon">🌐</span> Tất cả quy tắc</span>
+                <span class="cat-count-badge" id="mount-count-all">38</span>
+              </button>
+              <button class="store-placement-btn store-filter-item" data-placement="floor_wall_backed">
+                <span class="filter-item-left"><span class="filter-icon">🧱</span> Tựa tường (wall_backed)</span>
+                <span class="cat-count-badge" id="mount-count-floor_wall_backed">24</span>
+              </button>
+              <button class="store-placement-btn store-filter-item" data-placement="floor_center">
+                <span class="filter-item-left"><span class="filter-icon">📍</span> Giữa sàn (floor_center)</span>
+                <span class="cat-count-badge" id="mount-count-floor_center">8</span>
+              </button>
+              <button class="store-placement-btn store-filter-item" data-placement="wall_mounted">
+                <span class="filter-item-left"><span class="filter-icon">📌</span> Treo tường (wall_mounted)</span>
+                <span class="cat-count-badge" id="mount-count-wall_mounted">4</span>
+              </button>
+              <button class="store-placement-btn store-filter-item" data-placement="ceiling">
+                <span class="filter-item-left"><span class="filter-icon">💡</span> Gắn trần (ceiling)</span>
+                <span class="cat-count-badge" id="mount-count-ceiling">2</span>
+              </button>
+            </div>
+            <!-- Backward compatibility hidden select -->
+            <select id="furniture-store-placement-filter" class="store-placement-select hidden">
+              <option value="all">Quy tắc bố trí (Tất cả)</option>
+              <option value="floor_wall_backed">🧱 Tựa tường (floor_wall_backed)</option>
+              <option value="floor_center">📍 Giữa sàn / Tự do (floor_center)</option>
+              <option value="wall_mounted">📌 Treo tường (wall_mounted)</option>
+              <option value="ceiling">💡 Gắn trần (ceiling)</option>
+            </select>
+          </div>
+
+        </aside>
+
+        <!-- ================= CỘT 2: KHU VỰC GIỮA (GRID THẺ NỘI THẤT) ================= -->
+        <main class="store-studio-col store-studio-center" id="furniture-studio-center">
+          <!-- Toolbar trên cùng của Grid -->
+          <div class="store-grid-toolbar">
+            <div class="grid-toolbar-left">
+              <h4 class="grid-toolbar-title">Kho Mẫu Nội Thất &amp; Thiết Bị Kiến Trúc</h4>
+              <span class="grid-toolbar-status" id="grid-toolbar-status">Hiển thị 48 mẫu</span>
+            </div>
+            <div class="grid-toolbar-right">
+              <label for="furniture-store-sort" class="sort-label">Sắp xếp:</label>
+              <select id="furniture-store-sort" class="store-sort-select">
+                <option value="default">Mặc định</option>
+                <option value="name_asc">Tên (A → Z)</option>
+                <option value="name_desc">Tên (Z → A)</option>
+                <option value="volume_desc">Kích thước (Lớn → Nhỏ)</option>
+                <option value="tris_asc">Số đa giác (Nhẹ → Nặng)</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Grid chứa thẻ -->
+          <div class="furniture-store-grid" id="furniture-store-grid">
+            <!-- Dynamically populated by furniture_store_modal.js -->
+          </div>
+        </main>
+
+        <!-- ================= CỘT 3: 3D LIVE INSPECTOR & CALIBRATION PANEL ================= -->
+        <aside class="store-studio-col store-studio-inspector" id="furniture-studio-inspector">
+          
+          <!-- Inspector Header -->
+          <div class="inspector-header">
+            <div class="inspector-header-left">
+              <span class="inspector-badge-live">● LIVE 3D</span>
+              <h4 class="inspector-title" id="inspector-display-name">Chọn mẫu để kiểm tra</h4>
+            </div>
+            <span class="inspector-asset-id-pill" id="inspector-display-id">--</span>
+          </div>
+
+          <!-- Mini 3D Turntable Canvas -->
+          <div class="turntable-viewport-wrapper">
+            <div class="turntable-canvas-container" id="turntable-container">
+              <canvas id="turntable-canvas"></canvas>
+              
+              <!-- Floating Orientation Guide Overlay -->
+              <div class="turntable-overlay-guide">
+                <span class="overlay-pill pill-front" title="Mặt trước quay ra phòng">🟢 +Z Trước</span>
+                <span class="overlay-pill pill-back" title="Mặt lưng tựa phẳng vào tường">🔴 -Z Lưng</span>
+                <span class="overlay-pill pill-pivot" title="Tâm mặt đáy tiếp xúc sàn (0,0,0)">📍 Gốc (0,0,0)</span>
+              </div>
+
+              <!-- Turntable View Presets -->
+              <div class="turntable-controls-bar">
+                <button type="button" class="btn-tt-view" id="btn-view-front" title="Nhìn chính diện mặt trước (+Z)">Trước (+Z)</button>
+                <button type="button" class="btn-tt-view" id="btn-view-back" title="Nhìn mặt lưng áp tường (-Z)">Lưng (-Z)</button>
+                <button type="button" class="btn-tt-view" id="btn-view-top" title="Nhìn từ trên xuống (Top)">Đỉnh</button>
+                <button type="button" class="btn-tt-view" id="btn-view-iso" title="Phối cảnh góc 3/4">Góc 3/4</button>
+                <button type="button" class="btn-tt-toggle active" id="btn-toggle-turntable" title="Bật / Tắt tự động xoay 360°">🔄 Xoay</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Polycount & Mesh Inspection Metrics -->
+          <div class="inspector-metrics-bar">
+            <div class="metric-item">
+              <span class="metric-label">Đa giác (Triangles)</span>
+              <span class="metric-value" id="metric-triangles">--</span>
+            </div>
+            <div class="metric-item">
+              <span class="metric-label">Số Đỉnh (Vertices)</span>
+              <span class="metric-value" id="metric-vertices">--</span>
+            </div>
+            <div class="metric-item">
+              <span class="metric-label">Kích thước BBox</span>
+              <span class="metric-value" id="metric-bbox">--</span>
+            </div>
+            <div class="metric-item">
+              <span class="metric-label">Gốc Tâm Đáy</span>
+              <span class="metric-value" id="metric-pivot-status">--</span>
+            </div>
+          </div>
+
+          <!-- 1-Click Asset Normalizer Suite -->
+          <div class="inspector-section normalizer-suite">
+            <div class="inspector-section-header">
+              <span>⚡ CÔNG CỤ CHUẨN HÓA NHANH (1-CLICK)</span>
+            </div>
+            <div class="normalizer-btn-grid">
+              <button type="button" class="btn-normalizer" id="btn-norm-rotate-90" title="Xoay hình học quanh trục Y 90° để mặt lưng quay về đúng hướng -Z">
+                <span class="btn-norm-icon">🔄</span>
+                <span class="btn-norm-text">Xoay chuẩn 90°</span>
+              </button>
+              <button type="button" class="btn-normalizer" id="btn-norm-snap-pivot" title="Tự động đưa gốc (0,0,0) về chính giữa mặt đáy tiếp giáp sàn">
+                <span class="btn-norm-icon">🎯</span>
+                <span class="btn-norm-text">Căn tâm đáy (Pivot)</span>
+              </button>
+              <button type="button" class="btn-normalizer" id="btn-norm-measure" title="Quét Bounding Box 3D thực tế và cập nhật lại W, D, H vào form">
+                <span class="btn-norm-icon">📐</span>
+                <span class="btn-norm-text">Tự đo kích thước</span>
+              </button>
+              <button type="button" class="btn-normalizer btn-norm-highlight" id="btn-norm-save-glb" title="Xuất file .glb chuẩn hóa và ghi đè cập nhật lên server">
+                <span class="btn-norm-icon">💾</span>
+                <span class="btn-norm-text">Lưu file .glb</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Form chỉnh sửa trực tiếp Metadata -->
+          <div class="inspector-section inspector-form-section">
+            <div class="inspector-section-header">
+              <span>📝 CHỈNH SỬA THÔNG TIN &amp; LƯU SQLITE</span>
+            </div>
+            <form id="form-inspector-edit" class="inspector-form">
+              <div class="form-group-compact">
+                <label class="compact-label" for="inspect-name">Tên tiếng Việt *</label>
+                <input type="text" id="inspect-name" class="compact-input" placeholder="Tên sản phẩm / mẫu nội thất" required>
+              </div>
+
+              <div class="form-row-compact">
+                <div class="form-group-compact">
+                  <label class="compact-label" for="inspect-id">Mã định danh (Asset ID)</label>
+                  <input type="text" id="inspect-id" class="compact-input" readonly>
+                </div>
+                <div class="form-group-compact">
+                  <label class="compact-label" for="inspect-category">Không gian</label>
+                  <select id="inspect-category" class="compact-input">
+                    <option value="living">Phòng khách</option>
+                    <option value="kitchen">Bếp &amp; ăn</option>
+                    <option value="bedroom">Phòng ngủ</option>
+                    <option value="worship">Phòng thờ</option>
+                    <option value="bathroom">WC &amp; giặt</option>
+                    <option value="balcony">Ban công &amp; ngoại thất</option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="form-group-compact">
+                <label class="compact-label" for="inspect-placement">Quy tắc neo giữ AI (Placement Rule)</label>
+                <select id="inspect-placement" class="compact-input">
+                  <option value="floor_wall_backed">🧱 Tựa lưng vào tường (floor_wall_backed)</option>
+                  <option value="floor_center">📍 Đặt giữa sàn / Tự do (floor_center)</option>
+                  <option value="wall_mounted">📌 Treo trên tường (wall_mounted)</option>
+                  <option value="ceiling">💡 Gắn trên trần nhà (ceiling)</option>
+                </select>
+              </div>
+
+              <div class="form-row-compact form-row-dims">
+                <div class="form-group-compact">
+                  <label class="compact-label" for="inspect-w">Rộng - W (m)</label>
+                  <input type="number" id="inspect-w" class="compact-input" step="0.01" min="0.05">
+                </div>
+                <div class="form-group-compact">
+                  <label class="compact-label" for="inspect-d">Sâu - D (m)</label>
+                  <input type="number" id="inspect-d" class="compact-input" step="0.01" min="0.05">
+                </div>
+                <div class="form-group-compact">
+                  <label class="compact-label" for="inspect-h">Cao - H (m)</label>
+                  <input type="number" id="inspect-h" class="compact-input" step="0.01" min="0.05">
+                </div>
+              </div>
+
+              <div class="form-group-compact">
+                <label class="compact-label" for="inspect-tags">AI Semantic Tags (cách nhau bằng dấu phẩy)</label>
+                <input type="text" id="inspect-tags" class="compact-input" placeholder="sofa, living, modern, leather">
+              </div>
+
+              <div class="inspector-form-actions">
+                <button type="submit" class="btn-save-inspector" id="btn-save-inspector-asset">
+                  💾 Lưu Cập Nhật (SQLite Database)
+                </button>
+              </div>
+            </form>
+          </div>
+
+          <!-- Drag & Drop Tải Lên Mẫu .glb Mới Tức Thì -->
+          <div class="inspector-section dropzone-section">
+            <div class="inspector-dropzone" id="inspector-dropzone">
+              <span class="dropzone-icon">📥</span>
+              <div class="dropzone-text">
+                <strong>Thả file .glb vào đây</strong> hoặc <span class="dropzone-link">chọn file</span>
+              </div>
+              <span class="dropzone-hint">Tự động đo kích thước, snap tâm đáy &amp; chụp thumbnail</span>
+              <input type="file" id="inspector-file-input" accept=".glb" style="display: none;">
+            </div>
+          </div>
+
+        </aside>
+
       </div>
     </div>
   </div>
 
-  <!-- Sub-Modal: Thêm Mẫu Mới (.glb) -->
+  <!-- Sub-Modal: Thêm Mẫu Mới (.glb hoặc Ảnh nội thất thật) -->
   <div class="blueprint-modal hidden" id="modal-add-furniture">
     <div class="modal-content modal-add-furniture-content">
       <div class="modal-header">
-        <h3 class="modal-title">+ THÊM MẪU NỘI THẤT (.GLB) VÀO KHO</h3>
+        <h3 class="modal-title">+ THÊM TÀI NGUYÊN NỘI THẤT VÀO KHO</h3>
         <button class="modal-close" id="modal-add-furniture-close-btn">✕</button>
       </div>
       <div class="modal-body">
         <form id="form-add-furniture" class="project-form">
           <div class="form-row-grid">
             <div class="form-group">
-              <label class="form-label" for="add-furniture-name">Tên tiếng Việt *</label>
-              <input type="text" id="add-furniture-name" class="form-input" placeholder="Ví dụ: Sofa Văng Da Bò Ý" required>
+              <label class="form-label" for="add-furniture-name">Tên sản phẩm / Mẫu nội thất *</label>
+              <input type="text" id="add-furniture-name" class="form-input" placeholder="Ví dụ: Sofa Nỉ Chữ L Cao Cấp" required>
             </div>
             <div class="form-group">
               <label class="form-label" for="add-furniture-id">Mã định danh (Asset ID) *</label>
-              <input type="text" id="add-furniture-id" class="form-input" placeholder="sofa_vang_da_bo" required>
+              <input type="text" id="add-furniture-id" class="form-input" placeholder="sofa_ni_chu_l" required>
             </div>
           </div>
 
@@ -684,13 +1043,13 @@
 
           <div class="form-group">
             <label class="form-label" for="add-furniture-tags">Nhãn phân loại (Tags, cách nhau dấu phẩy)</label>
-            <input type="text" id="add-furniture-tags" class="form-input" placeholder="sofa, da, y, cao_cap">
+            <input type="text" id="add-furniture-tags" class="form-input" placeholder="sofa, ni, cao_cap, beige">
           </div>
 
           <div class="form-group">
-            <label class="form-label">Tải file mô hình Binary glTF 2.0 (.glb) *</label>
+            <label class="form-label" id="label-furniture-file">Tải file mô hình Binary glTF 2.0 (.glb) hoặc Ảnh thực tế (.png, .jpg) *</label>
             <label class="floor-file-label add-model-file-label" id="add-furniture-file-label">
-              <span>📁 Nhấp để chọn file hoặc kéo thả file .glb vào đây</span>
+              <span>📁 Nhấp để chọn file hoặc kéo thả file vào đây</span>
               <input type="file" id="add-furniture-file" accept=".glb" style="display: none;" required>
             </label>
           </div>
@@ -706,8 +1065,192 @@
     </div>
   </div>
 
+  <!-- Modal: Xuất Video 3D & Xem Tour Điện Ảnh (Cinematic Tour & Video Exporter) -->
+  <div class="blueprint-modal hidden" id="modal-video-exporter">
+    <div class="modal-content modal-video-content">
+      <div class="modal-header">
+        <div class="modal-title-group">
+          <h3 class="modal-title">🎬 XUẤT VIDEO 3D & XEM TOUR ĐIỆN ẢNH</h3>
+          <span class="badge-count">1080p 60 FPS • 12 Mbps</span>
+        </div>
+        <button class="modal-close" id="btn-close-video-exporter">✕</button>
+      </div>
+
+      <div class="modal-body modal-video-body">
+        
+        <!-- View 1: Configuration View -->
+        <div class="video-export-view" id="video-export-config-view">
+          
+          <!-- Kịch bản bay camera spline -->
+          <div class="form-section">
+            <label class="form-label">1. Chọn kịch bản bay camera spline (Cinematic Flight Path):</label>
+            <div class="scenarios-grid">
+              <div class="scenario-select-card active" data-scenario="full_film">
+                <div class="scenario-icon">🎬</div>
+                <div class="scenario-info">
+                  <div class="scenario-name">Phim Toàn Cảnh (Full Architectural Film)</div>
+                  <div class="scenario-desc">Cảnh quan sân vườn ngoại thất → Tách tầng Dollhouse → Quan sát từng tầng qua mặt cắt với đèn nội thất.</div>
+                  <div class="scenario-badges">
+                    <span class="tag-pill">Ngoại thất</span>
+                    <span class="tag-pill">Tách tầng</span>
+                    <span class="tag-pill">Nội thất</span>
+                  </div>
+                </div>
+              </div>
+
+              <div class="scenario-select-card" data-scenario="turntable">
+                <div class="scenario-icon">🔄</div>
+                <div class="scenario-info">
+                  <div class="scenario-name">Xoay 360° Ngoại Thất & Cắt Lớp (Turntable)</div>
+                  <div class="scenario-desc">Vòng xoay 360° mượt mà quanh công trình ở góc phối cảnh 3/4, tường cắt lớp tự động mở ra khi camera lướt qua.</div>
+                  <div class="scenario-badges">
+                    <span class="tag-pill">360° Orbit</span>
+                    <span class="tag-pill">Mặt tiền</span>
+                    <span class="tag-pill">Cắt lớp</span>
+                  </div>
+                </div>
+              </div>
+
+              <div class="scenario-select-card" data-scenario="interior_walkthrough">
+                <div class="scenario-icon">🚶</div>
+                <div class="scenario-info">
+                  <div class="scenario-name">Hành Trình Nội Thất (Walkthrough Tour)</div>
+                  <div class="scenario-desc">Bay xuyên suốt qua các phòng nội thất ở tầm mắt người thật: Sảnh đón, Phòng khách, Bếp ăn, Phòng ngủ Master.</div>
+                  <div class="scenario-badges">
+                    <span class="tag-pill">Tầm mắt</span>
+                    <span class="tag-pill">Phòng khách</span>
+                    <span class="tag-pill">Bếp</span>
+                  </div>
+                </div>
+              </div>
+
+              <div class="scenario-select-card" data-scenario="floor_by_floor">
+                <div class="scenario-icon">📑</div>
+                <div class="scenario-info">
+                  <div class="scenario-name">Trình Chiếu Chi Tiết Từng Tầng (Floor-by-Floor)</div>
+                  <div class="scenario-desc">Lần lượt cô lập và trình chiếu chi tiết từng tầng từ Tầng 1 lên Tầng 2 và Tầng Tum sân thượng kèm thông số phòng.</div>
+                  <div class="scenario-badges">
+                    <span class="tag-pill">Tầng 1</span>
+                    <span class="tag-pill">Tầng 2</span>
+                    <span class="tag-pill">Tầng Tum</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Tỷ lệ khung hình & Thời lượng -->
+          <div class="form-row-grid">
+            <div class="form-group">
+              <label class="form-label">2. Tỷ lệ khung hình (Aspect Ratio):</label>
+              <div class="aspect-ratio-row">
+                <button type="button" class="aspect-ratio-btn active" data-ratio="16:9">
+                  <span class="ratio-icon">🖥️</span>
+                  <span class="ratio-text">16:9 Ngang HD (1920 × 1080)</span>
+                </button>
+                <button type="button" class="aspect-ratio-btn" data-ratio="9:16">
+                  <span class="ratio-icon">📱</span>
+                  <span class="ratio-text">9:16 Dọc Điện thoại (Reels/TikTok)</span>
+                </button>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">3. Thời lượng video (Duration):</label>
+              <div class="duration-row">
+                <button type="button" class="duration-pill-btn" data-duration="15">⚡ 15 giây</button>
+                <button type="button" class="duration-pill-btn active" data-duration="30">⏱️ 30 giây (Chuẩn)</button>
+                <button type="button" class="duration-pill-btn" data-duration="45">🎥 45 giây (Chi tiết)</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Tùy chọn bổ sung -->
+          <div class="form-section">
+            <label class="form-label">4. Tùy chọn hiển thị & Đồ họa:</label>
+            <div class="video-options-row">
+              <label class="checkbox-label">
+                <input type="checkbox" id="chk-video-hud" checked>
+                <span>Vẽ HUD Caption đồ họa (Tên dự án, Phân đoạn & Tên phòng hiện tại)</span>
+              </label>
+              <span class="hud-quality-pill">Bitrate: 12 Mbps (Chuẩn Studio)</span>
+            </div>
+          </div>
+
+          <div class="form-actions video-export-actions">
+            <button type="button" class="btn-live-preview" id="btn-start-live-tour">
+              <span>▶️ Xem Tour Trực Tiếp</span>
+            </button>
+            <button type="button" class="btn-form-submit btn-export-record" id="btn-start-video-export">
+              <span>🎬 Bắt Đầu Ghi Hình & Xuất Video</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- View 2: Progress View -->
+        <div class="video-export-view hidden" id="video-export-progress-view">
+          <div class="export-progress-card">
+            <div class="export-spinner-large"></div>
+            <h4 class="export-progress-title">ĐANG KẾT XUẤT VIDEO 3D</h4>
+            <p class="export-progress-desc" id="export-progress-desc-label">Đang chuẩn bị canvas đồ họa...</p>
+            
+            <div class="export-progress-bar-track">
+              <div class="export-progress-bar-fill" id="export-progress-bar-fill" style="width: 0%;"></div>
+            </div>
+            
+            <div class="export-progress-meta-row">
+              <span class="export-progress-pct" id="export-progress-percent-label">0%</span>
+              <span class="export-progress-quality">1080p • 60 FPS • MediaRecorder 12 Mbps</span>
+            </div>
+
+            <button type="button" class="btn-cancel-export" id="btn-cancel-video-export">✕ Hủy Tiến Trình</button>
+          </div>
+        </div>
+
+        <!-- View 3: Result View with Video Player -->
+        <div class="video-export-view hidden" id="video-export-result-view">
+          <div class="export-result-card">
+            <div class="video-player-wrapper">
+              <video id="video-preview-player" class="video-preview-player" controls autoplay loop playsinline></video>
+            </div>
+
+            <div class="video-result-meta-bar">
+              <span class="result-badge" id="video-result-meta-badge">1080p MP4 • 30s • 12 Mbps</span>
+              <span class="result-check">✅ Kết xuất thành công!</span>
+            </div>
+
+            <div class="video-result-actions">
+              <button type="button" class="btn-secondary" id="btn-export-another-video">
+                <span>🔄 Xuất Kịch Bản Khác</span>
+              </button>
+              <button type="button" class="btn-download-video" id="btn-download-video-file">
+                <span>⬇️ Tải Video Về Máy (.mp4 / .webm)</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- Floating Client Presentation Toast Notification -->
+  <div class="client-toast hidden" id="client-toast"></div>
+
   <!-- Application Entry Point -->
   <script type="module" src="./js/app.js"></script>
 
+  <dialog id="generate-furniture-dialog" class="furniture-ai-dialog">
+    <form id="generate-furniture-form">
+      <h3>AI tạo nội thất 3D</h3>
+      <label for="generate-furniture-prompt">Mô tả hình dáng, vật liệu và kích thước rộng × sâu × cao</label>
+      <textarea id="generate-furniture-prompt" class="form-input" required maxlength="2000" rows="4" placeholder="Ghế đọc sách bọc nỉ kem, chân gỗ sồi, 0.85 × 0.90 × 0.80 m"></textarea>
+      <p id="generate-furniture-status" role="status" aria-live="polite"></p>
+      <div class="furniture-ai-actions">
+        <button id="generate-furniture-close" type="button" class="btn-header-secondary">Đóng</button>
+        <button type="submit" class="btn-create-shortcut">Tạo mẫu GLB</button>
+      </div>
+    </form>
+  </dialog>
 </body>
 </html>

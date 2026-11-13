@@ -25,6 +25,8 @@
   "license": "GPL-3.0-or-later",
   "packageManager": "pnpm@11.23.0",
   "dependencies": {
+    "jpeg-js": "^0.4.4",
+    "pngjs": "^7.0.0",
     "three": "^0.160.0"
   },
   "devDependencies": {

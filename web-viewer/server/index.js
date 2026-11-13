@@ -22,6 +22,7 @@ import { createRepository } from './repository.js';
 import { SEED_PROJECTS } from './seed_data.js';
 import { AiVisionExtractor } from './ai_vision_extractor.js';
 import { ProjectDocument } from './models.js';
+import { generateFurniture } from './furniture_ai.js';
 import { TwoPassSpatialCompiler } from './two_pass_spatial_compiler.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -47,6 +48,26 @@ const MIME_TYPES = {
   '.woff2': 'font/woff2',
   '.ttf': 'font/ttf'
 };
+
+function validGlbHeader(buffer, length = buffer.length) {
+  return buffer.length >= 12 && buffer.toString('ascii',0,4) === 'glTF' &&
+    buffer.readUInt32LE(4) === 2 && buffer.readUInt32LE(8) === length;
+}
+
+function localGlbExists(url) {
+  if (!/^\/assets\/models\/(?:[a-zA-Z0-9_-]+\/)*[a-zA-Z0-9_-]+\.glb(?:\?[a-zA-Z0-9_=-]+)?$/.test(url)) return false;
+  const filename = path.join(WEB_VIEWER_ROOT, 'public', url.split('?')[0]);
+  let fd;
+  try {
+    fd = fs.openSync(filename, 'r');
+    const header = Buffer.alloc(12);
+    return fs.readSync(fd, header, 0, 12, 0) === 12 && validGlbHeader(header, fs.fstatSync(fd).size);
+  } catch {
+    return false;
+  } finally {
+    if (fd !== undefined) fs.closeSync(fd);
+  }
+}
 
 export class WebViewerServer {
   constructor(options = {}) {
@@ -119,6 +140,11 @@ export class WebViewerServer {
     // --- API ROUTES ---
     if (pathname.startsWith('/api/')) {
       return this.handleApiRoute(req, res, pathname, parsedUrl);
+    }
+
+    // --- DEDICATED CLIENT VIEWER ROUTE ---
+    if (pathname === '/viewer' || pathname === '/viewer/') {
+      return this.handleStaticFile(req, res, '/viewer.html');
     }
 
     // --- STATIC FILES ---
@@ -282,11 +308,39 @@ export class WebViewerServer {
 
     // --- FURNITURE ASSETS API (PLUG-AND-PLAY FURNITURE STORE) ---
 
-    // GET /api/furniture-assets
-    if (pathname === '/api/furniture-assets' && method === 'GET') {
+    if (pathname === '/api/furniture-assets/generate' && method === 'POST') {
+      const body = await this.readJsonBody(req);
+      const prompt = typeof body?.prompt === 'string' ? body.prompt.trim() : '';
+      if (!prompt || prompt.length > 2000) return this.sendJson(res, 400, { success:false, error:'Nhập yêu cầu từ 1 đến 2000 ký tự.' });
+      let output;
+      try {
+        output = await generateFurniture(prompt, await this.repo.getAiConfig());
+      } catch (error) {
+        return this.sendJson(res, 422, { success:false, error: error instanceof SyntaxError ? 'Blueprint AI không phải JSON hợp lệ.' : error.message });
+      }
+      const { asset, glb } = output;
+      asset.glb_path = '/assets/models/custom/' + asset.asset_id + '.glb';
+      const filename = path.join(WEB_VIEWER_ROOT, 'public', asset.glb_path);
+      await fs.promises.mkdir(path.dirname(filename), { recursive:true });
+      await fs.promises.writeFile(filename, glb, { flag:'wx' });
+      try {
+        const saved = await this.repo.addFurnitureAsset(asset);
+        return this.sendJson(res, 201, { success:true, data:saved });
+      } catch (error) {
+        await fs.promises.unlink(filename);
+        throw error;
+      }
+    }
+
+    // GET /api/furniture or GET /api/furniture-assets
+    if ((pathname === '/api/furniture' || pathname === '/api/furniture-assets') && method === 'GET') {
       const category = parsedUrl.searchParams.get('category');
       const search = parsedUrl.searchParams.get('search');
-      const assets = await this.repo.getFurnitureAssets({ category, search });
+      const type = parsedUrl.searchParams.get('type') || parsedUrl.searchParams.get('asset_type');
+      const records = await this.repo.getFurnitureAssets({ category, search, type });
+      const assets = records.filter(asset => asset.asset_type !== 'real' && localGlbExists(asset.glb_path)).map(asset => ({
+        ...asset, image_url:'', thumbnail_url:'', source_image_url:''
+      }));
       return this.sendJson(res, 200, {
         success: true,
         count: assets.length,
@@ -296,8 +350,8 @@ export class WebViewerServer {
       });
     }
 
-    // POST /api/furniture-assets (Create/Upload custom asset)
-    if (pathname === '/api/furniture-assets' && method === 'POST') {
+    // POST /api/furniture or POST /api/furniture-assets (Create/Upload custom asset: 3D model or Real furniture)
+    if ((pathname === '/api/furniture' || pathname === '/api/furniture-assets') && method === 'POST') {
       const body = await this.readJsonBody(req);
       if (!body || !body.name) {
         return this.sendJson(res, 400, { success: false, error: 'Missing furniture name or asset data' });
@@ -305,11 +359,17 @@ export class WebViewerServer {
 
       const rawName = String(body.name).trim();
       const slug = rawName.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+      if (body.asset_type === 'real' || body.imageBase64 || body.image_base64 || body.image_url) {
+        return this.sendJson(res, 400, { success:false, error:'Kho chỉ nhận mô hình GLB.' });
+      }
+      const assetType = 'model';
       const assetId = body.asset_id || `custom_${Date.now()}_${slug || 'item'}`;
+      if (!/^[a-zA-Z0-9_-]{1,120}$/.test(assetId)) return this.sendJson(res, 400, { success:false, error:'Asset ID không hợp lệ.' });
+      const previous = (await this.repo.getFurnitureAssets()).find(asset => asset.asset_id === assetId);
+      let glbPath = previous?.glb_path || `/assets/models/custom/${assetId}.glb`;
 
-      let glbPath = body.glb_path || `/assets/models/custom/${assetId}.glb`;
+      // Handle GLB upload for 3D model
       const base64Data = body.glbBase64 || body.glb_base64;
-
       if (base64Data) {
         try {
           let cleanBase64 = base64Data;
@@ -317,34 +377,50 @@ export class WebViewerServer {
             cleanBase64 = cleanBase64.split('base64,')[1];
           }
           const glbBuffer = Buffer.from(cleanBase64, 'base64');
+          if (!validGlbHeader(glbBuffer)) return this.sendJson(res, 400, { success:false, error:'Tệp GLB không hợp lệ.' });
 
-          const publicCustomDir = path.join(WEB_VIEWER_ROOT, 'public', 'assets', 'models', 'custom');
-          if (!fs.existsSync(publicCustomDir)) fs.mkdirSync(publicCustomDir, { recursive: true });
-          fs.writeFileSync(path.join(publicCustomDir, `${assetId}.glb`), glbBuffer);
+          const targetSubdir = 'custom';
+          const publicGlbDir = path.join(WEB_VIEWER_ROOT, 'public', 'assets', 'models', targetSubdir);
+          if (!fs.existsSync(publicGlbDir)) fs.mkdirSync(publicGlbDir, { recursive: true });
+          fs.writeFileSync(path.join(publicGlbDir, `${assetId}.glb`), glbBuffer);
 
           const distDir = path.join(WEB_VIEWER_ROOT, 'dist', 'assets', 'models');
           if (fs.existsSync(distDir)) {
-            const distCustomDir = path.join(distDir, 'custom');
-            if (!fs.existsSync(distCustomDir)) fs.mkdirSync(distCustomDir, { recursive: true });
-            fs.writeFileSync(path.join(distCustomDir, `${assetId}.glb`), glbBuffer);
+            const distGlbDir = path.join(distDir, targetSubdir);
+            if (!fs.existsSync(distGlbDir)) fs.mkdirSync(distGlbDir, { recursive: true });
+            fs.writeFileSync(path.join(distGlbDir, `${assetId}.glb`), glbBuffer);
           }
-          glbPath = `/assets/models/custom/${assetId}.glb`;
+          glbPath = `/assets/models/${targetSubdir}/${assetId}.glb`;
         } catch (err) {
-          console.error('[WebViewerServer] Failed to write custom GLB file:', err);
+          return this.sendJson(res, 500, { success:false, error:'Không thể lưu tệp GLB.' });
         }
       }
+
+      if (!localGlbExists(glbPath)) return this.sendJson(res, 400, { success:false, error:'Cần tệp GLB hợp lệ.' });
+      const dims = body.dimensions || { width: 1.0, depth: 1.0, height: 1.0 };
+      const sizeX = typeof body.size_x === 'number' ? body.size_x : (Number(dims.width || dims.nativeWidth) || 1.0);
+      const sizeY = typeof body.size_y === 'number' ? body.size_y : (Number(dims.height || dims.nativeHeight) || 1.0);
+      const sizeZ = typeof body.size_z === 'number' ? body.size_z : (Number(dims.depth || dims.nativeDepth) || 1.0);
 
       const assetRecord = {
         id: assetId,
         asset_id: assetId,
         name: rawName,
         category: body.category || 'living_room',
+        asset_type: assetType,
+
+        variant_of: body.variant_of || '',
+        aspect_ratio: typeof body.aspect_ratio === 'number' ? body.aspect_ratio : 1.0,
+        description: body.description || '',
         room_types: Array.isArray(body.room_types) ? body.room_types : [body.category || 'living_room'],
         placement_type: body.placement_type || 'floor_wall_backed',
-        dimensions: body.dimensions || { width: 1.0, depth: 1.0, height: 1.0 },
-        tags: Array.isArray(body.tags) ? body.tags : [body.category || 'living_room', 'custom'],
+        dimensions: dims,
+        size_x: sizeX,
+        size_y: sizeY,
+        size_z: sizeZ,
+        tags: Array.isArray(body.tags) ? body.tags : [body.category || 'living_room', assetType],
         glb_path: glbPath,
-        is_builtin: 0
+        is_builtin: previous?.is_builtin || 0
       };
 
       const saved = await this.repo.addFurnitureAsset(assetRecord);
@@ -353,8 +429,8 @@ export class WebViewerServer {
       return this.sendJson(res, 201, { success: true, data: saved, asset: saved });
     }
 
-    // DELETE /api/furniture-assets/:id
-    const furnDelMatch = pathname.match(/^\/api\/furniture-assets\/([^/]+)$/);
+    // DELETE /api/furniture-assets/:id or /api/furniture/:id
+    const furnDelMatch = pathname.match(/^\/api\/(?:furniture-assets|furniture)\/([^/]+)$/);
     if (furnDelMatch && method === 'DELETE') {
       const assetId = decodeURIComponent(furnDelMatch[1]);
       const deleted = await this.repo.deleteFurnitureAsset(assetId);
@@ -570,6 +646,9 @@ export class WebViewerServer {
 
   handleStaticFile(req, res, pathname) {
     let safePath = pathname === '/' ? '/index.html' : pathname;
+    if (pathname === '/viewer' || pathname === '/viewer/') {
+      safePath = '/viewer.html';
+    }
     let filePath = path.join(WEB_VIEWER_ROOT, safePath);
 
     if (pathname.startsWith('/assets/')) {
@@ -592,14 +671,18 @@ export class WebViewerServer {
       return;
     }
 
-    // Check if file exists, else fallback to index.html for SPA
+    // Check if file exists, else fallback to index.html for SPA (or viewer.html for /viewer)
     if (!fs.existsSync(filePath) || fs.statSync(filePath).isDirectory()) {
       if (pathname.startsWith('/assets/')) {
         res.writeHead(404);
         res.end('Not Found');
         return;
       }
-      filePath = path.join(WEB_VIEWER_ROOT, 'index.html');
+      if (pathname.startsWith('/viewer')) {
+        filePath = path.join(WEB_VIEWER_ROOT, 'viewer.html');
+      } else {
+        filePath = path.join(WEB_VIEWER_ROOT, 'index.html');
+      }
       if (!fs.existsSync(filePath)) {
         res.writeHead(404);
         res.end('Not Found');
@@ -640,6 +723,9 @@ export class WebViewerServer {
             url: asset.glb_path,
             file: `custom/${asset.asset_id}.glb`,
             dimensions: asset.dimensions,
+            size_x: asset.size_x !== undefined ? asset.size_x : (Number(asset.dimensions?.width) || 1.0),
+            size_y: asset.size_y !== undefined ? asset.size_y : (Number(asset.dimensions?.height) || 1.0),
+            size_z: asset.size_z !== undefined ? asset.size_z : (Number(asset.dimensions?.depth) || 1.0),
             placement_type: asset.placement_type,
             room_types: asset.room_types,
             isCustom: true

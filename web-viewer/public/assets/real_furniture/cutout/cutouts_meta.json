@@ -1,0 +1,122 @@
+[
+  {
+    "asset_id": "real_bed_master_king",
+    "crop_width": 956,
+    "crop_height": 610,
+    "aspect_ratio": 1.5672,
+    "cutout_file": "real_bed_master_king.png",
+    "thumb_file": "real_bed_master_king.png",
+    "cutout_bytes": 772887,
+    "thumb_bytes": 50573
+  },
+  {
+    "asset_id": "real_coffee_table_set",
+    "crop_width": 967,
+    "crop_height": 601,
+    "aspect_ratio": 1.609,
+    "cutout_file": "real_coffee_table_set.png",
+    "thumb_file": "real_coffee_table_set.png",
+    "cutout_bytes": 573406,
+    "thumb_bytes": 44035
+  },
+  {
+    "asset_id": "real_dining_table_6chairs",
+    "crop_width": 947,
+    "crop_height": 665,
+    "aspect_ratio": 1.4241,
+    "cutout_file": "real_dining_table_6chairs.png",
+    "thumb_file": "real_dining_table_6chairs.png",
+    "cutout_bytes": 838934,
+    "thumb_bytes": 63650
+  },
+  {
+    "asset_id": "real_kitchen_system_l",
+    "crop_width": 953,
+    "crop_height": 776,
+    "aspect_ratio": 1.2281,
+    "cutout_file": "real_kitchen_system_l.png",
+    "thumb_file": "real_kitchen_system_l.png",
+    "cutout_bytes": 863799,
+    "thumb_bytes": 57835
+  },
+  {
+    "asset_id": "real_lavabo_vanity",
+    "crop_width": 731,
+    "crop_height": 908,
+    "aspect_ratio": 0.8051,
+    "cutout_file": "real_lavabo_vanity.png",
+    "thumb_file": "real_lavabo_vanity.png",
+    "cutout_bytes": 556869,
+    "thumb_bytes": 47581
+  },
+  {
+    "asset_id": "real_potted_plant",
+    "crop_width": 619,
+    "crop_height": 974,
+    "aspect_ratio": 0.6355,
+    "cutout_file": "real_potted_plant.png",
+    "thumb_file": "real_potted_plant.png",
+    "cutout_bytes": 684799,
+    "thumb_bytes": 49106
+  },
+  {
+    "asset_id": "real_sofa_l_modern",
+    "crop_width": 932,
+    "crop_height": 410,
+    "aspect_ratio": 2.2732,
+    "cutout_file": "real_sofa_l_modern.png",
+    "thumb_file": "real_sofa_l_modern.png",
+    "cutout_bytes": 515271,
+    "thumb_bytes": 38007
+  },
+  {
+    "asset_id": "real_toilet",
+    "crop_width": 613,
+    "crop_height": 837,
+    "aspect_ratio": 0.7324,
+    "cutout_file": "real_toilet.png",
+    "thumb_file": "real_toilet.png",
+    "cutout_bytes": 334428,
+    "thumb_bytes": 40464
+  },
+  {
+    "asset_id": "real_tv_cabinet",
+    "crop_width": 920,
+    "crop_height": 554,
+    "aspect_ratio": 1.6606,
+    "cutout_file": "real_tv_cabinet.png",
+    "thumb_file": "real_tv_cabinet.png",
+    "cutout_bytes": 629834,
+    "thumb_bytes": 47445
+  },
+  {
+    "asset_id": "real_wardrobe",
+    "crop_width": 699,
+    "crop_height": 911,
+    "aspect_ratio": 0.7673,
+    "cutout_file": "real_wardrobe.png",
+    "thumb_file": "real_wardrobe.png",
+    "cutout_bytes": 754097,
+    "thumb_bytes": 63093
+  },
+  {
+    "asset_id": "real_work_desk",
+    "crop_width": 865,
+    "crop_height": 839,
+    "aspect_ratio": 1.031,
+    "cutout_file": "real_work_desk.png",
+    "thumb_file": "real_work_desk.png",
+    "cutout_bytes": 708304,
+    "thumb_bytes": 60782
+  },
+  {
+    "asset_id": "real_worship_altar",
+    "crop_width": 733,
+    "crop_height": 920,
+    "aspect_ratio": 0.7967,
+    "cutout_file": "real_worship_altar.png",
+    "thumb_file": "real_worship_altar.png",
+    "cutout_bytes": 956498,
+    "thumb_bytes": 76354
+  }
+]

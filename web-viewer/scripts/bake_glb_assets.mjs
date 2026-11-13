@@ -15,8 +15,10 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import zlib from 'node:zlib';
-import { fileURLToPath } from 'node:url';
+import { createHash } from 'node:crypto';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -312,6 +314,13 @@ function createProceduralTextureBuffers() {
     textures.contact_shadow = encodeRgbaToPng(w, h, rgba);
   }
 
+  const granite = new Uint8Array(64 * 64 * 4);
+  for (let y = 0; y < 64; y++) for (let x = 0; x < 64; x++) {
+    const grain = hash2D(x, y, 41);
+    const value = grain > 0.94 ? 113 : 30 + Math.round(grain * 28);
+    granite.set([value, value + 2, value + 4, 255], (y * 64 + x) * 4);
+  }
+  textures.black_granite = encodeRgbaToPng(64, 64, granite);
   return textures;
 }
 
@@ -467,6 +476,13 @@ const MATERIAL_DEFS = {
     baseColorFactor: [0.72, 0.42, 0.29, 1.0],
     roughnessFactor: 0.74,
     metallicFactor: 0.02
+  },
+  blackGranite: {
+    name: 'BlackGranite',
+    baseColorFactor: [0.85, 0.85, 0.85, 1.0],
+    roughnessFactor: 0.32,
+    metallicFactor: 0,
+    textureKey: 'black_granite'
   },
   soilDark: {
     name: 'SoilDark',
@@ -701,10 +717,10 @@ function addSphere(parent, r, matKey, x = 0, y = 0, z = 0, sx = 1, sy = 1, sz = 
  * Normalizes a built asset group so its exact bottom-center rests at (0, 0, 0) (Y = 0)
  * and appends a baked ContactShadowPlane at Y = 0.001m matching the footprint.
  */
-function finalizeAssetGroup(group, targetW, targetD) {
+function finalizeAssetGroup(group, targetW, targetD, normalized = false) {
   group.updateMatrixWorld(true);
   const box = new THREE.Box3().setFromObject(group);
-  if (!box.isEmpty()) {
+  if (!normalized && !box.isEmpty()) {
     const centerX = (box.min.x + box.max.x) * 0.5;
     const centerZ = (box.min.z + box.max.z) * 0.5;
     const minY = box.min.y;
@@ -843,36 +859,10 @@ function mergeMeshesByMaterial(rootGroup, assetId) {
     rawMeshesByMat.get(matKey).push(obj);
   });
 
-  // Consolidate materials if there are more than 3 non-shadow material groups
-  // (ensures at most 2-4 merged meshes per GLB: <= 3 body meshes + ContactShadowPlane)
-  let meshesByMat = rawMeshesByMat;
-  if (rawMeshesByMat.size > 3) {
-    const sortedMats = [...rawMeshesByMat.entries()]
-      .sort((a, b) => b[1].length - a[1].length)
-      .map(entry => entry[0]);
-
-    const keepMats = sortedMats.slice(0, 3);
-    const consolidated = new Map();
-    for (const km of keepMats) {
-      consolidated.set(km, [...(rawMeshesByMat.get(km) || [])]);
-    }
-
-    for (let i = 3; i < sortedMats.length; i++) {
-      const extraMat = sortedMats[i];
-      const extraMeshes = rawMeshesByMat.get(extraMat) || [];
-      const extraCat = getMaterialCategory(extraMat);
-
-      // Find compatible target material among keepMats
-      const targetMat = keepMats.find(km => getMaterialCategory(km) === extraCat) || keepMats[0];
-      consolidated.get(targetMat).push(...extraMeshes);
-    }
-    meshesByMat = consolidated;
-  }
-
   const optimizedGroup = new THREE.Group();
   optimizedGroup.name = assetId;
 
-  for (const [matKey, meshList] of meshesByMat.entries()) {
+  for (const [matKey, meshList] of rawMeshesByMat.entries()) {
     if (meshList.length === 0) continue;
 
     const geosToMerge = [];
@@ -887,8 +877,7 @@ function mergeMeshesByMaterial(rootGroup, assetId) {
       geosToMerge.push(geo);
     }
 
-    const mergedGeo = manualMergeGeometries(geosToMerge);
-    mergedGeo.computeVertexNormals();
+    const mergedGeo = mergeGeometries(geosToMerge) || manualMergeGeometries(geosToMerge);
 
     const mergedMesh = new THREE.Mesh(mergedGeo, MAT_INSTANCES[matKey] || MAT_INSTANCES.woodOak);
     mergedMesh.name = `${assetId}_${matKey}`;
@@ -2330,6 +2319,136 @@ function parseGlbWithGLTFLoader(glbBuffer) {
   });
 }
 
+export const BLUEPRINT_MATERIALS = {
+  natural_oak: 'woodOak', dark_walnut: 'woodWalnut', mahogany_worship: 'woodMahogany',
+  carrara_marble: 'marbleCarrara', black_granite: 'blackGranite', boucle_cream: 'fabricLinen',
+  velvet_slate: 'fabricVelvet', matte_black_steel: 'metalBlack', brushed_brass: 'metalBrass',
+  vitreous_china: 'ceramicWhite', architectural_glass: 'glassClear',
+  foliage_green: 'foliageDark'
+};
+
+const vector = (value, length, min = -12, max = 12) =>
+  Array.isArray(value) && value.length === length && value.every(n => Number.isFinite(n) && n >= min && n <= max);
+
+function normalizeGeometry(group, size) {
+  group.getObjectByName('ContactShadowPlane')?.removeFromParent();
+  const box = new THREE.Box3().setFromObject(group, true);
+  const current = box.getSize(new THREE.Vector3());
+  if (![current.x, current.y, current.z].every(n => Number.isFinite(n) && n > 1e-5)) throw new Error('Hình học rỗng hoặc suy biến.');
+  group.scale.set(size[0] / current.x, size[1] / current.y, size[2] / current.z);
+  const parent = new THREE.Group();
+  parent.add(group);
+  // Center the nested group at the base while keeping the contact shadow unscaled.
+  const center = box.getCenter(new THREE.Vector3());
+  group.position.set(-center.x * group.scale.x, -box.min.y * group.scale.y, -center.z * group.scale.z);
+  return finalizeAssetGroup(parent, size[0] / 1.04, size[2] / 1.04, true);
+}
+
+function buildBlueprint(blueprint) {
+  if (!blueprint || !vector(blueprint.size, 3, 0.005, 12) ||
+      !Array.isArray(blueprint.parts) || !blueprint.parts.length || blueprint.parts.length > 80) {
+    throw new Error('Blueprint cần kích thước [X,Y,Z] và 1–80 bộ phận hợp lệ.');
+  }
+  const group = new THREE.Group();
+  for (const part of blueprint.parts) {
+    const material = Object.hasOwn(BLUEPRINT_MATERIALS, part.material) && MAT_INSTANCES[BLUEPRINT_MATERIALS[part.material]];
+    const position = part.position ?? [0,0,0];
+    const rotation = part.rotation ?? [0,0,0];
+    if (!material || !vector(position, 3) || !vector(rotation, 3)) throw new Error('Vật liệu hoặc phép biến đổi không hợp lệ.');
+    let geometry;
+    if (part.type === 'rounded_box' && vector(part.size, 3, 0.003)) {
+      const [x,y,z] = part.size;
+      geometry = createRoundedBoxGeometry(x, y, z, Math.min(x,y,z) * 0.14, 2);
+    } else if (['tapered_cylinder','angled_leg'].includes(part.type) && vector(part.size, 3, 0.003)) {
+      const [top, height, bottom] = part.size;
+      geometry = new THREE.CylinderGeometry(top, bottom, height, 16);
+    } else if (part.type === 'lathe_profile' && Array.isArray(part.points) && part.points.length >= 3 &&
+               part.points.length <= 32 && part.points.every(point => vector(point, 2, 0))) {
+      geometry = new THREE.LatheGeometry(part.points.map(point => new THREE.Vector2(...point)), 24);
+    } else if (['curved_tube','arch_frame'].includes(part.type) && Array.isArray(part.points) &&
+               part.points.length >= 3 && part.points.length <= 24 && part.points.every(point => vector(point, 3)) &&
+               Number.isFinite(part.radius) && part.radius >= 0.002 && part.radius <= 0.3) {
+      const curve = new THREE.CatmullRomCurve3(part.points.map(point => new THREE.Vector3(...point)));
+      geometry = new THREE.TubeGeometry(curve, 28, part.radius, 8);
+    } else if (part.type === 'foliage_cluster' && vector(part.size, 3, 0.02)) {
+      const [x,y,z] = part.size;
+      const leaves = new THREE.Group();
+      for (let i = 0; i < 16; i++) {
+        const angle = i * 2.39996;
+        const leaf = new THREE.Mesh(new THREE.SphereGeometry(0.5, 8, 6), material);
+        leaf.scale.set(x * 0.5, y * 0.27, z * 0.42);
+        leaf.position.set(Math.cos(angle) * x * 0.26, (i / 15 - 0.5) * y * 0.68, Math.sin(angle) * z * 0.25);
+        leaf.rotation.z = Math.sin(angle) * 0.6;
+        leaves.add(leaf);
+      }
+      leaves.position.set(...position);
+      leaves.rotation.set(...rotation);
+      group.add(leaves);
+      continue;
+    } else {
+      throw new Error('Bộ phận không hợp lệ: ' + String(part.type));
+    }
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.position.set(...position);
+    mesh.rotation.set(...rotation);
+    group.add(mesh);
+  }
+  return normalizeGeometry(group, blueprint.size);
+}
+
+export function compileFurnitureGlb(blueprint, id) {
+  return serializeGroupToGlbBuffer(buildBlueprint(blueprint), id);
+}
+
+function furnitureExtras() {
+  const box = (size, position, material = 'natural_oak') => ({ type: 'rounded_box', size, position, material });
+  const cylinder = (size, position, material = 'matte_black_steel') => ({ type: 'tapered_cylinder', size, position, material });
+  const table = (x,y,z,material) => [
+    box([x,0.04,z],[0,y-0.02,0],material),
+    ...[-1,1].flatMap(a => [-1,1].map(b => cylinder([0.027,y-0.04,0.018],[a*x*0.38,(y-0.04)/2,b*z*0.36])))
+  ];
+  const vase = { type:'lathe_profile', material:'vitreous_china', position:[0,0,0],
+    points:[[0,0],[0.11,0],[0.15,0.09],[0.13,0.23],[0.055,0.32],[0.043,0.32],[0.043,0.29]] };
+  return [
+    ['nightstand_oak','Tab đầu giường gỗ sồi','bedroom',[0.46,0.52,0.42], [
+      box([0.46,0.42,0.42],[0,0.29,0]), box([0.41,0.14,0.03],[0,0.32,0.22],'dark_walnut'),
+      box([0.13,0.019,0.03],[0,0.32,0.245],'brushed_brass'), ...table(0.43,0.12,0.38)]],
+    ['console_walnut','Bàn console gỗ óc chó','living_room',[1.15,0.78,0.35],table(1.15,0.78,0.35,'dark_walnut')],
+    ['side_table_granite','Bàn phụ mặt granite','living_room',[0.43,0.49,0.43],[
+      cylinder([0.215,0.045,0.215],[0,0.46,0],'black_granite'),
+      cylinder([0.045,0.44,0.13],[0,0.22,0],'brushed_brass')]],
+    ['bar_stool_oak','Ghế bar lưng cong','kitchen_dining',[0.44,0.97,0.43],[
+      ...table(0.42,0.69,0.41,'natural_oak'), box([0.41,0.06,0.4],[0,0.72,0],'boucle_cream'),
+      {type:'arch_frame', material:'natural_oak',radius:0.024,points:[[-0.17,0.7,-0.18],[-0.17,0.91,-0.18],[0,0.96,-0.2],[0.17,0.91,-0.18],[0.17,0.7,-0.18]]}]],
+    ['ceramic_vase','Bình gốm trang trí','worship_rooftop',[0.3,0.32,0.3],[vase]],
+    ['floor_lamp_brass','Đèn đứng chụp vải','living_room',[0.42,1.57,0.42],[
+      cylinder([0.16,0.04,0.16],[0,0.02,0]),cylinder([0.017,1.33,0.017],[0,0.68,0],'brushed_brass'),
+      cylinder([0.14,0.28,0.21],[0,1.43,0],'boucle_cream')]],
+    ['bench_velvet','Ghế băng nhung xanh','bedroom',[1.12,0.49,0.43],[
+      ...table(1.08,0.39,0.4,'dark_walnut'),box([1.12,0.1,0.43],[0,0.44,0],'velvet_slate')]],
+    ['arch_mirror_brass','Gương vòm viền đồng','bathroom_laundry',[0.65,1.12,0.055],[
+      box([0.6,0.94,0.025],[0,0.48,0],'architectural_glass'),
+      {type:'arch_frame',material:'brushed_brass',radius:0.018,points:[[-0.31,0.02,0],[-0.31,0.76,0],[-0.2,1,0],[0,1.1,0],[0.2,1,0],[0.31,0.76,0],[0.31,0.02,0],[-0.31,0.02,0]]}]],
+    ['oak_bookcase','Kệ sách gỗ sồi năm tầng','bedroom',[0.86,1.7,0.34],[
+      ...[-0.41,0.41].map(x=>box([0.04,1.7,0.34],[x,0.85,0])),
+      ...[0.12,0.5,0.88,1.26,1.68].map(y=>box([0.82,0.04,0.34],[0,y,0])),
+      ...[0.08,0.13,0.18,0.24].map((x,i)=>box([0.04,0.24-i*0.025,0.19],[x,0.645-i*0.0125,0],'velvet_slate'))]],
+    ['pedestal_dining_oak','Bàn ăn tròn chân trụ gỗ sồi','kitchen_dining',[1.08,0.76,1.08],[
+      cylinder([0.54,0.055,0.54],[0,0.7325,0],'natural_oak'),
+      cylinder([0.095,0.69,0.18],[0,0.37,0],'dark_walnut'),
+      cylinder([0.23,0.045,0.23],[0,0.0225,0],'matte_black_steel')]],
+    ['outdoor_planter_low','Chậu cây thấp sân thượng','greenery_architectural',[0.68,0.58,0.52],[
+      box([0.68,0.27,0.52],[0,0.135,0],'black_granite'),
+      {type:'foliage_cluster',material:'foliage_green',size:[0.65,0.43,0.49],position:[0,0.37,0]}]],
+    ['worship_screen_oak','Vách lam trang trí phòng thờ','worship_rooftop',[0.92,1.54,0.22],[
+      box([0.92,0.06,0.22],[0,0.03,0],'dark_walnut'),box([0.92,0.055,0.08],[0,1.51,0],'mahogany_worship'),
+      ...Array.from({length:11},(_,i)=>box([0.04,1.47,0.04],[0.085*(i-5),0.78,0],'mahogany_worship'))]],
+    ['ceramic_planter_leaf','Chậu gốm tán lá nhiều tầng','greenery_architectural',[0.55,0.85,0.55],[
+      vase,cylinder([0.025,0.55,0.03],[0,0.4,0],'dark_walnut'),
+      {type:'foliage_cluster',material:'foliage_green',size:[0.55,0.52,0.55],position:[0,0.64,0]}]]
+  ].map(([id,name,category,size,parts]) => ({id,name,category,size,parts}));
+}
+
 async function main() {
   setupNodeGltfLoaderPolyfill();
   fs.mkdirSync(OUTPUT_DIR, { recursive: true });
@@ -2346,15 +2465,19 @@ async function main() {
   const catalogAssets = [];
   let totalBytes = 0;
 
-  console.log(`[GLB Baker] Generating ${ASSET_CATALOG_SPECS.length} binary glTF 2.0 (.glb) models into ${OUTPUT_DIR}...`);
+  console.log(`[GLB Baker] Generating built-in binary glTF 2.0 (.glb) models into ${OUTPUT_DIR}...`);
 
-  for (const spec of ASSET_CATALOG_SPECS) {
+  const extras = furnitureExtras();
+  const specs = [...ASSET_CATALOG_SPECS, ...extras.map(extra => ({
+    ...extra, width: extra.size[0], height: extra.size[1], depth: extra.size[2], legacyTypes: []
+  }))];
+  for (const spec of specs) {
     const buildFn = builders[spec.id];
-    if (typeof buildFn !== 'function') {
+    if (!spec.parts && typeof buildFn !== 'function') {
       throw new Error(`Missing builder function for asset ID: ${spec.id}`);
     }
 
-    const group = buildFn();
+    const group = spec.parts ? buildBlueprint(spec) : normalizeGeometry(buildFn(), [spec.width, spec.height, spec.depth]);
     const glbBuffer = serializeGroupToGlbBuffer(group, spec.id);
 
     // Verify magic header & version
@@ -2386,7 +2509,13 @@ async function main() {
     fs.writeFileSync(outPath, glbBuffer);
     totalBytes += glbBuffer.length;
 
-    const bbox = new THREE.Box3().setFromObject(parsedGltf.scene);
+    const bbox = new THREE.Box3();
+    parsedGltf.scene.traverse(child => {
+      if (child.isMesh && !child.userData.isContactShadow && child.name !== 'ContactShadowPlane') bbox.expandByObject(child, true);
+    });
+    const actual = bbox.getSize(new THREE.Vector3());
+    if (actual.distanceTo(new THREE.Vector3(spec.width,spec.height,spec.depth)) > 0.001 ||
+        Math.abs(bbox.min.y) > 0.001) throw new Error('Sai kích thước GLB: ' + spec.id + ' ' + actual.toArray() + ' y=' + bbox.min.y);
     const nativeW = Number((bbox.max.x - bbox.min.x).toFixed(3));
     const nativeH = Number((bbox.max.y - bbox.min.y).toFixed(3));
     const nativeD = Number((bbox.max.z - bbox.min.z).toFixed(3));
@@ -2396,7 +2525,7 @@ async function main() {
       asset_id: spec.id,
       name: spec.name,
       category: spec.category,
-      url: `/assets/models/${spec.id}.glb`,
+      url: `/assets/models/${spec.id}.glb?v=${createHash('sha256').update(glbBuffer).digest('hex').slice(0,12)}`,
       file: `${spec.id}.glb`,
       legacyTypes: spec.legacyTypes,
       dimensions: {
@@ -2407,6 +2536,7 @@ async function main() {
         nativeDepth: nativeD,
         nativeHeight: nativeH
       },
+      size_x: spec.width, size_y: spec.height, size_z: spec.depth,
       meshCount,
       byteLength: glbBuffer.length,
       hasContactShadow: true
@@ -2443,7 +2573,7 @@ async function main() {
   console.log(`\n[GLB Baker] Successfully baked ${catalogAssets.length} .glb models (${(totalBytes / 1024 / 1024).toFixed(2)} MB total) + asset_catalog.json`);
 }
 
-main().catch((err) => {
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) main().catch((err) => {
   console.error('[GLB Baker] FATAL ERROR:', err);
   process.exit(1);
 });

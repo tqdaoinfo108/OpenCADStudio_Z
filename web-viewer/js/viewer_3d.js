@@ -16,9 +16,14 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { SSAOPass } from 'three/addons/postprocessing/SSAOPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { ProceduralTextureManager } from './procedural_textures.js';
 import { FurnitureGenerator } from './furniture_generator.js';
 import { AssetLibraryManager } from './asset_library_manager.js';
+import { CinematicTourDirector } from './cinematic_tour_director.js';
 
 export class Viewer3D {
   constructor(canvasContainer, options = {}) {
@@ -28,7 +33,7 @@ export class Viewer3D {
     // View state
     this.viewMode = 'dollhouse'; // 'dollhouse' | 'facade' | 'exploded' | 'walkthrough'
     this.interiorLightsOn = true;
-    this.roomLabelsVisible = true;
+    this.roomLabelsVisible = false;
     this.activeFloorId = 'floor_1';
     this.selectedObject = null;
     this.selectedObjectMesh = null;
@@ -49,6 +54,14 @@ export class Viewer3D {
     this._ceilingGlowDecals = [];
     this.isContextLost = false;
     this.resizeObserver = null;
+
+    // Post-processing & Ambient Occlusion
+    this.composer = null;
+    this.renderPass = null;
+    this.ssaoPass = null;
+    this.outputPass = null;
+    this.postProcessingEnabled = true;
+    this._chamferGeoCache = new Map();
 
     // Scene collections
     this.floorGroups = new Map(); // floorId -> THREE.Group
@@ -88,6 +101,8 @@ export class Viewer3D {
     this.materials = this.initMaterials();
     this.furnitureGenerator = new FurnitureGenerator(this.materials);
     this.assetLibrary = AssetLibraryManager.getInstance();
+    this.furnitureMode = 'model'; // 'model' | 'real'
+    this.realBillboards = new Set();
 
     // Damped Camera Tweening (600ms cubicOut)
     this.tweenStartPos = new THREE.Vector3();
@@ -109,11 +124,12 @@ export class Viewer3D {
 
     // Update architectural dollhouse colors to match Nếp Nhà reference palette
     if (mats.interiorPlaster) {
-      mats.interiorPlaster.color.setHex(0xF5F2EB); // Warm architectural cream (#F5F2EB)
+      mats.interiorPlaster.color.setHex(0xF6F4EE);
       mats.interiorPlaster.roughness = 0.78;
     }
+    mats.exteriorWall?.color.setHex(0xF6F4EE);
     if (mats.cutawayCapMat) {
-      mats.cutawayCapMat.color.setHex(0x3D3D3D); // Crisp dark gray section cap (#3D3D3D)
+      mats.cutawayCapMat.color.setHex(0x3B3E45);
       mats.cutawayCapMat.roughness = 0.62;
     }
     if (mats.porcelainTile) {
@@ -230,6 +246,88 @@ export class Viewer3D {
       mats.zoneOutdoorSlateTile.dispose = () => {};
     }
 
+    // Specialized Exterior Landscape Materials
+    if (!mats.asphaltRoad) {
+      mats.asphaltRoad = new THREE.MeshStandardMaterial({
+        color: 0x282A2E,
+        roughness: 0.88,
+        metalness: 0.05
+      });
+      mats.asphaltRoad.userData = { isSharedPBR: true, materialKey: 'asphaltRoad' };
+      mats.asphaltRoad.dispose = () => {};
+    }
+
+    if (!mats.sidewalkPaver) {
+      mats.sidewalkPaver = new THREE.MeshStandardMaterial({
+        color: 0xDCD8CF,
+        roughness: 0.65,
+        metalness: 0.03
+      });
+      mats.sidewalkPaver.userData = { isSharedPBR: true, materialKey: 'sidewalkPaver' };
+      mats.sidewalkPaver.dispose = () => {};
+    }
+
+    if (!mats.fenceMetal) {
+      mats.fenceMetal = new THREE.MeshStandardMaterial({
+        color: 0x242528,
+        roughness: 0.35,
+        metalness: 0.75
+      });
+      mats.fenceMetal.userData = { isSharedPBR: true, materialKey: 'fenceMetal' };
+      mats.fenceMetal.dispose = () => {};
+    }
+
+    if (!mats.gatePillar) {
+      mats.gatePillar = new THREE.MeshStandardMaterial({
+        color: 0xECE7DE,
+        roughness: 0.75,
+        metalness: 0.02
+      });
+      mats.gatePillar.userData = { isSharedPBR: true, materialKey: 'gatePillar' };
+      mats.gatePillar.dispose = () => {};
+    }
+
+    if (!mats.steppingStone) {
+      mats.steppingStone = new THREE.MeshStandardMaterial({
+        color: 0x3C4046,
+        roughness: 0.58,
+        metalness: 0.08
+      });
+      mats.steppingStone.userData = { isSharedPBR: true, materialKey: 'steppingStone' };
+      mats.steppingStone.dispose = () => {};
+    }
+
+    if (!mats.palmFoliage) {
+      mats.palmFoliage = new THREE.MeshStandardMaterial({
+        color: 0x2D6E3F,
+        roughness: 0.55,
+        metalness: 0.02,
+        side: THREE.DoubleSide
+      });
+      mats.palmFoliage.userData = { isSharedPBR: true, materialKey: 'palmFoliage' };
+      mats.palmFoliage.dispose = () => {};
+    }
+
+    if (!mats.cypressFoliage) {
+      mats.cypressFoliage = new THREE.MeshStandardMaterial({
+        color: 0x255234,
+        roughness: 0.75,
+        metalness: 0.02
+      });
+      mats.cypressFoliage.userData = { isSharedPBR: true, materialKey: 'cypressFoliage' };
+      mats.cypressFoliage.dispose = () => {};
+    }
+
+    if (!mats.flowerBlossomWarm) {
+      mats.flowerBlossomWarm = new THREE.MeshStandardMaterial({
+        color: 0xE86A7A,
+        roughness: 0.6,
+        metalness: 0.0
+      });
+      mats.flowerBlossomWarm.userData = { isSharedPBR: true, materialKey: 'flowerBlossomWarm' };
+      mats.flowerBlossomWarm.dispose = () => {};
+    }
+
     return mats;
   }
 
@@ -256,9 +354,9 @@ export class Viewer3D {
     this.renderer.setSize(width, height);
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
     this.renderer.shadowMap.enabled = true;
-    this.renderer.shadowMap.type = THREE.PCFShadowMap;
+    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.08;
+    this.renderer.toneMappingExposure = 1.05;
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.container.appendChild(this.renderer.domElement);
 
@@ -267,7 +365,7 @@ export class Viewer3D {
     if (this.envMap) {
       this.scene.environment = this.envMap;
       if ('environmentIntensity' in this.scene) {
-        this.scene.environmentIntensity = 0.72;
+        this.scene.environmentIntensity = 0.85;
       }
     }
 
@@ -284,7 +382,10 @@ export class Viewer3D {
     this.setupLighting();
     this.renderer.shadowMap.autoUpdate = false;
 
-    // 7. Lifecycle & Input Event Listeners
+    // 7. Post-Processing Pipeline (Screen Space Ambient Occlusion via EffectComposer)
+    this.initPostProcessing(width, height);
+
+    // 8. Lifecycle & Input Event Listeners
     this.setupEventListeners();
 
     // 8. Preload 35 .glb Assets in parallel & auto-upgrade scene if loadBimScene ran early
@@ -326,6 +427,111 @@ export class Viewer3D {
     return ProceduralTextureManager.createStudioEnvMap(this.renderer);
   }
 
+  /**
+   * Cinematic Post-Processing Pipeline:
+   * EffectComposer + RenderPass + SSAOPass (Ambient Occlusion) + OutputPass (Tone Mapping & Color Management)
+   */
+  initPostProcessing(width, height) {
+    try {
+      const w = width || (this.container ? this.container.clientWidth : 0) || window.innerWidth || 1280;
+      const h = height || (this.container ? this.container.clientHeight : 0) || window.innerHeight || 800;
+
+      this.composer = new EffectComposer(this.renderer);
+      this.composer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
+
+      // 1. Scene RenderPass
+      this.renderPass = new RenderPass(this.scene, this.camera);
+      this.composer.addPass(this.renderPass);
+
+      // 2. SSAOPass (Screen Space Ambient Occlusion for grounded corners & walls)
+      this.ssaoPass = new SSAOPass(this.scene, this.camera, w, h);
+      this.ssaoPass.kernelRadius = 0.85; // Architectural ambient occlusion radius (85cm world space)
+      this.ssaoPass.minDistance = 0.001; // Avoid self-shadowing acne
+      this.ssaoPass.maxDistance = 0.12;  // Crevice contact depth falloff
+      this.ssaoPass.output = SSAOPass.OUTPUT.Default; // Multiplies AO over scene color
+      this.composer.addPass(this.ssaoPass);
+
+      // 3. OutputPass (Applies Tone Mapping & SRGB Color Management)
+      this.outputPass = new OutputPass();
+      this.composer.addPass(this.outputPass);
+
+      this.postProcessingEnabled = true;
+    } catch (err) {
+      console.warn('[Viewer3D] Postprocessing initialization warning, falling back to direct render:', err);
+      this.postProcessingEnabled = false;
+    }
+  }
+
+  /**
+   * Micro-beveled / chamfered box geometry (2-3mm bevel)
+   * Softens 90-degree knife edges to capture realistic specular highlights along walls, slabs, and columns
+   */
+  createChamferedBoxGeometry(width, height, depth, bevel = 0.003, segments = 2) {
+    const w = Math.max(0.015, width);
+    const h = Math.max(0.01, height);
+    const d = Math.max(0.015, depth);
+    const b = Math.min(bevel, w * 0.25, h * 0.25, d * 0.25);
+    const seg = Math.max(1, segments);
+
+    const key = `chamfer_${w.toFixed(3)}_${h.toFixed(3)}_${d.toFixed(3)}_${b.toFixed(4)}_${seg}`;
+    if (!this._chamferGeoCache) {
+      this._chamferGeoCache = new Map();
+    }
+    if (this._chamferGeoCache.has(key)) {
+      return this._chamferGeoCache.get(key);
+    }
+
+    if (b <= 0.0005) {
+      const box = new THREE.BoxGeometry(w, h, d);
+      box.userData = {
+        isSharedGeometry: true,
+        isSharedPBR: true,
+        bevelEnabled: true,
+        chamfered: true
+      };
+      this._chamferGeoCache.set(key, box);
+      return box;
+    }
+
+    const hw = Math.max(0.001, (w - b * 2) / 2);
+    const hd = Math.max(0.001, (d - b * 2) / 2);
+    const shape = new THREE.Shape();
+    shape.moveTo(-hw, -hd);
+    shape.lineTo(hw, -hd);
+    shape.lineTo(hw, hd);
+    shape.lineTo(-hw, hd);
+    shape.closePath();
+
+    const extrudeH = Math.max(0.001, h - b * 2);
+    const geo = new THREE.ExtrudeGeometry(shape, {
+      depth: extrudeH,
+      bevelEnabled: true,
+      bevelSegments: seg,
+      steps: 1,
+      bevelSize: b,
+      bevelThickness: b,
+      bevelOffset: 0
+    });
+
+    geo.rotateX(Math.PI / 2);
+    geo.center();
+    geo.computeVertexNormals();
+
+    geo.userData = {
+      isSharedGeometry: true,
+      isSharedPBR: true,
+      bevelEnabled: true,
+      chamfered: true,
+      bevelSize: b,
+      bevelSegments: seg
+    };
+    geo._realDispose = geo.dispose.bind(geo);
+    geo.dispose = () => {};
+
+    this._chamferGeoCache.set(key, geo);
+    return geo;
+  }
+
   setupEventListeners() {
     const canvas = this.renderer.domElement;
 
@@ -360,6 +566,7 @@ export class Viewer3D {
         const dpr = window.devicePixelRatio || 1;
         if (dpr > 1.2) {
           this.renderer.setPixelRatio(1.0);
+          if (this.composer) this.composer.setPixelRatio(1.0);
         }
         this.invalidate();
       });
@@ -371,7 +578,9 @@ export class Viewer3D {
 
       this.controls.addEventListener('end', () => {
         const dpr = window.devicePixelRatio || 1;
-        this.renderer.setPixelRatio(Math.min(dpr, 1.5));
+        const targetDpr = Math.min(dpr, 1.5);
+        this.renderer.setPixelRatio(targetDpr);
+        if (this.composer) this.composer.setPixelRatio(targetDpr);
         this.invalidate();
       });
     }
@@ -390,7 +599,7 @@ export class Viewer3D {
       this.invalidate();
     }, { passive: true });
 
-    canvas.addEventListener('pointerdown', (e) => this.onPointerDown(e));
+    canvas.addEventListener('pointerdown', (e) => this.onPointerDown(e), { capture: true });
     canvas.addEventListener('pointermove', (e) => this.onPointerMove(e));
     window.addEventListener('pointerup', (e) => this.onPointerUp(e));
     window.addEventListener('keydown', (e) => this.onKeyDown(e));
@@ -403,11 +612,11 @@ export class Viewer3D {
     this.hemiLight.position.set(0, 50, 0);
     this.scene.add(this.hemiLight);
 
-    // 2. Main Sun DirectionalLight (1024x1024 PCFShadowMap)
+    // 2. Main Sun DirectionalLight (2048x2048 PCFSoftShadowMap)
     this.sunLight = new THREE.DirectionalLight(0xFFF6E5, 1.38);
     this.sunLight.position.set(24, 38, -22);
     this.sunLight.castShadow = true;
-    this.sunLight.shadow.mapSize.set(1024, 1024);
+    this.sunLight.shadow.mapSize.set(2048, 2048);
     this.sunLight.shadow.camera.near = 1.0;
     this.sunLight.shadow.camera.far = 140;
     const d = 28;
@@ -415,7 +624,7 @@ export class Viewer3D {
     this.sunLight.shadow.camera.right = d;
     this.sunLight.shadow.camera.top = d;
     this.sunLight.shadow.camera.bottom = -d;
-    this.sunLight.shadow.bias = -0.0005;
+    this.sunLight.shadow.bias = -0.0001;
     this.sunLight.shadow.normalBias = 0.02;
     this.scene.add(this.sunLight);
     this.scene.add(this.sunLight.target);
@@ -455,6 +664,50 @@ export class Viewer3D {
     this.contactShadowPlane.position.set(7.5, -0.01, 10.0);
     this.contactShadowPlane.receiveShadow = true;
     this.scene.add(this.contactShadowPlane);
+  }
+
+  /**
+   * Set warm architectural sky atmosphere (warm golden-hour tone & soft lighting)
+   * @param {boolean} [enabled=true]
+   */
+  setupWarmSky(enabled = true) {
+    this.warmAtmosphereEnabled = enabled;
+    if (enabled) {
+      this.scene.background = new THREE.Color(0xF5EDE3); // Warm golden architectural sky
+      this.scene.fog = new THREE.FogExp2(0xF5EDE3, 0.0055);
+      if (this.hemiLight) {
+        this.hemiLight.color.setHex(0xFFF4E2);
+        this.hemiLight.groundColor.setHex(0xD8CBBA);
+        this.hemiLight.intensity = 0.82;
+      }
+      if (this.sunLight) {
+        this.sunLight.color.setHex(0xFFEED3);
+        this.sunLight.intensity = 1.45;
+      }
+      if (this.fillLight) {
+        this.fillLight.color.setHex(0xFCE9D8);
+        this.fillLight.intensity = 0.38;
+      }
+    } else {
+      this.scene.background = new THREE.Color(0xF4F2EC);
+      this.scene.fog = new THREE.FogExp2(0xF4F2EC, 0.0065);
+      if (this.hemiLight) {
+        this.hemiLight.color.setHex(0xFFFBF2);
+        this.hemiLight.groundColor.setHex(0xDDD6C7);
+        this.hemiLight.intensity = 0.72;
+      }
+      if (this.sunLight) {
+        this.sunLight.color.setHex(0xFFF6E5);
+        this.sunLight.intensity = 1.38;
+      }
+      if (this.fillLight) {
+        this.fillLight.color.setHex(0xE8F1F8);
+        this.fillLight.intensity = 0.35;
+      }
+    }
+    this._cutawayDirty = true;
+    this._invalidateShadowMap();
+    this.invalidate();
   }
 
   /**
@@ -579,13 +832,15 @@ export class Viewer3D {
       this.buildColumns(floor, floorGroup);
 
       // Walls (Exterior Dynamic Cutaway Walls + Segmented Openings + Interior Walls + Baseboards)
-      this.buildWalls(floor, floorGroup, idx);
+      const embeddedOpenings = this.buildWalls(floor, floorGroup, idx);
 
       // Detailed 3D Staircases
       this.buildStairs(floor, floorGroup);
+      this.buildPergola(floor, floorGroup);
+      if (idx === bimSceneGraph.floors.length - 1) this.buildFacadeRoof(floor, floorGroup);
 
       // Remaining Standalone Doors & Windows
-      this.buildDoorsAndWindows(floor, floorGroup);
+      this.buildDoorsAndWindows(floor, floorGroup, embeddedOpenings);
 
       // High-Detail Parametric 3D Furniture & Sanitary Fixtures
       this.buildFurniture(floor, floorGroup);
@@ -619,47 +874,324 @@ export class Viewer3D {
     this._invalidateShadowMap();
   }
 
-  buildSite(siteData, metadata = {}) {
+  /**
+   * Comprehensive Architectural Landscape Context Builder
+   * Dựng cảnh quan ngoại thất chân công trình:
+   * - Sân vườn đá bước dạo (stepping stone pathway) kết hợp thảm cỏ xanh
+   * - Vỉa hè trước mặt tiền, bó vỉa & đường nhựa giao thông
+   * - Cây cảnh quan đa dạng: tùng tháp, cọ nhiệt đới, cây bóng mát, bụi hoa & bồn cây
+   * - Hàng rào thoáng kiến trúc, trụ cổng đôi hiện đại & cửa mở đón tiếp
+   * - Nền trời ấm áp (setupWarmSky)
+   * @param {Object} siteData
+   * @param {Object} metadata
+   */
+  buildLandscapeContext(siteData, metadata = {}) {
     this.siteGroup = new THREE.Group();
     this.siteGroup.name = 'site_landscape';
 
     const lotW = metadata.lot_width || 15.0;
     const lotL = metadata.lot_length || 24.0;
-    const pad = 2.4;
+    const pad = 3.6;
 
-    // Site lot plinth below structural slab (-0.185m to -0.025m)
+    // Building footprint reference for walkway & landscaping placement
+    let bMinX = 1.5, bMaxX = Math.max(bMinX + 4.0, lotW - 1.5);
+    let bMinY = 5.0, bMaxY = Math.max(bMinY + 6.0, lotL - 3.0);
+    if (this.bimData?.floors?.[0]?.slabs?.[0]) {
+      const s = this.bimData.floors[0].slabs[0];
+      bMinX = s.minX;
+      bMaxX = s.maxX;
+      bMinY = s.minY;
+      bMaxY = s.maxY;
+    }
+
+    // 1. Lush Green Lawn Plinth (-0.185m to -0.025m)
     const lotGeo = new THREE.BoxGeometry(lotW + pad * 2, 0.16, lotL + pad * 2);
     const lotMesh = new THREE.Mesh(lotGeo, this.materials.grassGround);
     lotMesh.position.set(lotW / 2, -0.105, lotL / 2);
     lotMesh.receiveShadow = true;
     this.siteGroup.add(lotMesh);
 
-    // Stone perimeter curb
+    // Stone perimeter curb around property plinth
     const borderGeo = new THREE.BoxGeometry(lotW + pad * 2 + 0.16, 0.14, lotL + pad * 2 + 0.16);
     const borderMesh = new THREE.Mesh(borderGeo, this.materials.concreteSlab);
     borderMesh.position.set(lotW / 2, -0.12, lotL / 2);
     borderMesh.receiveShadow = true;
     this.siteGroup.add(borderMesh);
 
-    // Trees
-    if (siteData && siteData.trees) {
+    // 2. Vỉa hè trước mặt tiền (Front Sidewalk) & Bó vỉa (Curb) & Đường nhựa (Asphalt Street)
+    // Sidewalk spanning the entire front facade from Z = -0.2m to Z = -3.2m
+    const sidewalkW = lotW + pad * 2 + 8.0;
+    const sidewalkD = 3.0;
+    const sidewalkGeo = new THREE.BoxGeometry(sidewalkW, 0.12, sidewalkD);
+    const sidewalkMesh = new THREE.Mesh(sidewalkGeo, this.materials.sidewalkPaver || this.materials.concreteSlab);
+    sidewalkMesh.position.set(lotW / 2, -0.06, -0.2 - sidewalkD / 2);
+    sidewalkMesh.receiveShadow = true;
+    this.siteGroup.add(sidewalkMesh);
+
+    // Stone curb along front edge of sidewalk (Z = -3.2m)
+    const curbGeo = new THREE.BoxGeometry(sidewalkW, 0.16, 0.20);
+    const curbMesh = new THREE.Mesh(curbGeo, this.materials.concreteSlab);
+    curbMesh.position.set(lotW / 2, -0.06, -3.2);
+    curbMesh.receiveShadow = true;
+    this.siteGroup.add(curbMesh);
+
+    // Asphalt roadway in front of property (Z = -3.3m to Z = -11.0m)
+    const roadD = 7.7;
+    const roadW = sidewalkW + 16.0;
+    const roadGeo = new THREE.BoxGeometry(roadW, 0.10, roadD);
+    const roadMesh = new THREE.Mesh(roadGeo, this.materials.asphaltRoad || this.materials.cutawayCapMat);
+    roadMesh.position.set(lotW / 2, -0.13, -3.3 - roadD / 2);
+    roadMesh.receiveShadow = true;
+    this.siteGroup.add(roadMesh);
+
+    // Road centerline white dashed markings
+    const dashCount = Math.floor(roadW / 4.5);
+    const dashStart = (lotW / 2) - (dashCount * 4.5) / 2;
+    for (let di = 0; di < dashCount; di++) {
+      const dashGeo = new THREE.BoxGeometry(2.4, 0.015, 0.18);
+      const dashMat = new THREE.MeshBasicMaterial({ color: 0xF0F0EB });
+      const dashMesh = new THREE.Mesh(dashGeo, dashMat);
+      dashMesh.position.set(dashStart + di * 4.5 + 1.2, -0.075, -7.15);
+      this.siteGroup.add(dashMesh);
+    }
+
+    // Driveway curb ramp / entrance transition in front of gate (X in [2.4, 6.4])
+    const gateEntranceMinX = 2.4;
+    const gateEntranceMaxX = Math.min(6.6, lotW - 1.5);
+    const gateEntranceW = gateEntranceMaxX - gateEntranceMinX;
+    const rampGeo = new THREE.BoxGeometry(gateEntranceW + 0.4, 0.08, 0.6);
+    const rampMesh = new THREE.Mesh(rampGeo, this.materials.concreteSlab);
+    rampMesh.position.set((gateEntranceMinX + gateEntranceMaxX) / 2, -0.09, -3.3);
+    rampMesh.rotation.x = -0.12;
+    this.siteGroup.add(rampMesh);
+
+    // 3. Sân vườn đá bước dạo (Stepping Stone Pathway)
+    // Main entrance path: connects front gate (X ≈ 4.4, Z ≈ 0.0) to house entrance porch (X ≈ (bMinX+bMaxX)/2, Z ≈ bMinY)
+    const porchX = (bMinX + bMaxX) / 2;
+    const porchZ = bMinY;
+    const mainPathCount = 9;
+    for (let pi = 0; pi < mainPathCount; pi++) {
+      const u = pi / (mainPathCount - 1);
+      // Gentle natural S-curve
+      const stepX = 4.4 + (porchX - 4.4) * u + Math.sin(u * Math.PI) * 0.4;
+      const stepZ = 0.4 + (porchZ - 0.9) * u;
+      const stepW = 0.88 - (pi % 2) * 0.08;
+      const stepD = 0.48;
+
+      const stepGeo = this.createChamferedBoxGeometry(stepW, 0.038, stepD, 0.003, 1);
+      const stepMesh = new THREE.Mesh(stepGeo, this.materials.steppingStone || this.materials.zoneOutdoorSlateTile);
+      stepMesh.position.set(stepX, -0.015, stepZ);
+      stepMesh.rotation.y = (pi % 2 === 0 ? 0.03 : -0.04);
+      stepMesh.receiveShadow = true;
+      stepMesh.castShadow = true;
+      this.siteGroup.add(stepMesh);
+    }
+
+    // Secondary side garden path curving towards side yard & pool
+    const sidePathCount = 7;
+    for (let si = 0; si < sidePathCount; si++) {
+      const v = si / (sidePathCount - 1);
+      const sx = 4.4 + v * (bMaxX + 1.2 - 4.4);
+      const sz = 2.2 + v * v * 7.5;
+      const sideStepGeo = this.createChamferedBoxGeometry(0.78, 0.035, 0.44, 0.003, 1);
+      const sideStep = new THREE.Mesh(sideStepGeo, this.materials.steppingStone || this.materials.zoneOutdoorSlateTile);
+      sideStep.position.set(sx, -0.015, sz);
+      sideStep.rotation.y = 0.15 * v;
+      sideStep.receiveShadow = true;
+      this.siteGroup.add(sideStep);
+    }
+
+    // 4. Hàng rào thoáng kiến trúc & Cổng chính (Modern Slatted Fence & Dual Pillars)
+    const fenceZ = -0.15;
+    const fenceH = 1.7;
+    const fenceBaseH = 0.32;
+    const slatH = fenceH - fenceBaseH;
+
+    // Gate Pillars (Trụ cổng chính sang trọng)
+    const pillarSize = 0.52;
+    const pillarH = 2.35;
+    const pillarGeo = this.createChamferedBoxGeometry(pillarSize, pillarH, pillarSize, 0.004, 2);
+    const pillarCapGeo = this.createChamferedBoxGeometry(pillarSize + 0.12, 0.10, pillarSize + 0.12, 0.003, 1);
+
+    const makeGatePillar = (px) => {
+      const pGroup = new THREE.Group();
+      const pMesh = new THREE.Mesh(pillarGeo, this.materials.gatePillar || this.materials.interiorPlaster);
+      pMesh.position.set(px, pillarH / 2 - 0.02, fenceZ);
+      pMesh.castShadow = true;
+      pMesh.receiveShadow = true;
+
+      const pCap = new THREE.Mesh(pillarCapGeo, this.materials.marbleCarrara || this.materials.concreteSlab);
+      pCap.position.set(px, pillarH + 0.03, fenceZ);
+      pCap.castShadow = true;
+
+      // Modern warm exterior sconce light on pillar front
+      const sconceGeo = new THREE.BoxGeometry(0.12, 0.22, 0.08);
+      const sconceMat = new THREE.MeshStandardMaterial({
+        color: 0x222225,
+        roughness: 0.3,
+        metalness: 0.8
+      });
+      const sconce = new THREE.Mesh(sconceGeo, sconceMat);
+      sconce.position.set(px, 1.6, fenceZ - pillarSize / 2 - 0.04);
+
+      const lightGlowGeo = new THREE.BoxGeometry(0.08, 0.14, 0.03);
+      const lightGlowMat = new THREE.MeshBasicMaterial({ color: 0xFFE0B2 });
+      const glow = new THREE.Mesh(lightGlowGeo, lightGlowMat);
+      glow.position.set(px, 1.6, fenceZ - pillarSize / 2 - 0.07);
+
+      pGroup.add(pMesh, pCap, sconce, glow);
+      return pGroup;
+    };
+
+    this.siteGroup.add(makeGatePillar(gateEntranceMinX));
+    this.siteGroup.add(makeGatePillar(gateEntranceMaxX));
+
+    // Semi-open architectural gate at entrance
+    const gateLeafW = (gateEntranceW - 0.2) / 2;
+    const gateGroup = new THREE.Group();
+    gateGroup.position.set(gateEntranceMinX + 0.1, 0, fenceZ);
+    // Gate left leaf pivoted open slightly (-25 deg)
+    const leftLeaf = new THREE.Group();
+    leftLeaf.rotation.y = -0.44; // Welcoming open angle
+    const gateFrameGeo = new THREE.BoxGeometry(gateLeafW, 1.65, 0.06);
+    const gateFrame = new THREE.Mesh(gateFrameGeo, this.materials.fenceMetal || this.materials.cutawayCapMat);
+    gateFrame.position.set(gateLeafW / 2, 0.85, 0);
+    gateFrame.castShadow = true;
+    leftLeaf.add(gateFrame);
+    gateGroup.add(leftLeaf);
+    this.siteGroup.add(gateGroup);
+
+    // Helper: Build slatted fence panel (low concrete base + vertical metal louvers)
+    const buildSlattedSection = (x1, x2, zPos, isRotated = false) => {
+      const sectionGroup = new THREE.Group();
+      const length = Math.abs(x2 - x1);
+      const centerX = (x1 + x2) / 2;
+
+      // Concrete plinth base
+      const baseGeo = isRotated
+        ? new THREE.BoxGeometry(0.20, fenceBaseH, length)
+        : new THREE.BoxGeometry(length, fenceBaseH, 0.20);
+      const baseMesh = new THREE.Mesh(baseGeo, this.materials.concreteSlab);
+      baseMesh.position.set(centerX, fenceBaseH / 2 - 0.02, zPos);
+      baseMesh.receiveShadow = true;
+      baseMesh.castShadow = true;
+      sectionGroup.add(baseMesh);
+
+      // Top horizontal rail
+      const topRailGeo = isRotated
+        ? new THREE.BoxGeometry(0.06, 0.05, length)
+        : new THREE.BoxGeometry(length, 0.05, 0.06);
+      const topRail = new THREE.Mesh(topRailGeo, this.materials.fenceMetal || this.materials.cutawayCapMat);
+      topRail.position.set(centerX, fenceH, zPos);
+      sectionGroup.add(topRail);
+
+      // Vertical metal louvers spaced every 0.15m
+      const slatCount = Math.floor(length / 0.15);
+      const slatStep = length / Math.max(1, slatCount);
+      const slatMat = this.materials.fenceMetal || this.materials.cutawayCapMat;
+
+      for (let si = 1; si < slatCount; si++) {
+        const slatGeo = isRotated
+          ? new THREE.BoxGeometry(0.04, slatH, 0.035)
+          : new THREE.BoxGeometry(0.035, slatH, 0.04);
+        const slatMesh = new THREE.Mesh(slatGeo, slatMat);
+        const offset = -length / 2 + si * slatStep;
+        if (isRotated) {
+          slatMesh.position.set(centerX, fenceBaseH + slatH / 2, zPos + offset);
+        } else {
+          slatMesh.position.set(centerX + offset, fenceBaseH + slatH / 2, zPos);
+        }
+        slatMesh.castShadow = true;
+        sectionGroup.add(slatMesh);
+      }
+      return sectionGroup;
+    };
+
+    // Front fence left segment (from -pad to gate left)
+    this.siteGroup.add(buildSlattedSection(-pad, gateEntranceMinX - 0.3, fenceZ));
+    // Front fence right segment (from gate right to lotW + pad)
+    this.siteGroup.add(buildSlattedSection(gateEntranceMaxX + 0.3, lotW + pad, fenceZ));
+
+    // Left perimeter fence (-pad, from Z=0 to lotL + pad)
+    this.siteGroup.add(buildSlattedSection(-pad, -pad, (lotL + pad) / 2, true));
+    // Right perimeter fence (lotW + pad, from Z=0 to lotL + pad)
+    this.siteGroup.add(buildSlattedSection(lotW + pad, lotW + pad, (lotL + pad) / 2, true));
+
+    // Rear boundary wall (solid privacy wall along Z = lotL + pad)
+    const rearWallGeo = this.createChamferedBoxGeometry(lotW + pad * 2, 2.2, 0.22, 0.003, 2);
+    const rearWall = new THREE.Mesh(rearWallGeo, this.materials.interiorPlaster || this.materials.concreteSlab);
+    rearWall.position.set(lotW / 2, 1.08, lotL + pad);
+    rearWall.receiveShadow = true;
+    rearWall.castShadow = true;
+    this.siteGroup.add(rearWall);
+
+    // 5. Cây cảnh quan ngoại thất (Landscape Trees, Palms, Cypresses & Shrubs)
+    // A. Two Columnar Cypresses flanking gate entrance
+    const cypress1 = this.createColumnarCypress(1.15);
+    cypress1.position.set(gateEntranceMinX - 0.75, -0.02, fenceZ + 0.65);
+    const cypress2 = this.createColumnarCypress(1.15);
+    cypress2.position.set(gateEntranceMaxX + 0.75, -0.02, fenceZ + 0.65);
+    this.siteGroup.add(cypress1, cypress2);
+
+    // B. Tropical Fan Palms (near front corner & pool patio)
+    const palm1 = this.createTropicalPalm(1.2);
+    palm1.position.set(lotW + pad - 1.4, -0.02, 1.8);
+    const palm2 = this.createTropicalPalm(1.05);
+    palm2.position.set(Math.min(lotW + 1.2, bMaxX + 1.8), -0.02, Math.min(lotL * 0.45, bMinY + 5.5));
+    this.siteGroup.add(palm1, palm2);
+
+    // C. Elegant Landscape Shade Trees
+    if (siteData?.trees && siteData.trees.length > 0) {
       for (const t of siteData.trees) {
-        const tree = this.createTreeModel(t.radius || 0.8);
+        const tree = this.createTreeModel(t.radius || 0.85);
         tree.position.set(t.x, -0.025, t.y);
         this.siteGroup.add(tree);
       }
+    } else {
+      // Natural default tree placement around villa
+      const t1 = this.createTreeModel(0.95);
+      t1.position.set(-pad + 1.6, -0.025, 3.5);
+      const t2 = this.createTreeModel(1.1);
+      t2.position.set(-pad + 1.8, -0.025, lotL * 0.6);
+      const t3 = this.createTreeModel(0.9);
+      t3.position.set(lotW + pad - 1.8, -0.025, lotL * 0.75);
+      this.siteGroup.add(t1, t2, t3);
     }
 
-    // Swimming pool / Koi pond features
+    // D. Low Flowering Shrub Beds & Boxwood Hedges along front lawn & fence
+    const shrubPositions = [
+      { x: -pad + 1.2, z: 0.8, color: 0xE86A7A },
+      { x: -pad + 2.5, z: 0.8, color: 0xF5C542 },
+      { x: 1.2, z: 0.8, color: 0xE86A7A },
+      { x: gateEntranceMaxX + 1.6, z: 0.8, color: 0xFFFFFF },
+      { x: gateEntranceMaxX + 2.8, z: 0.8, color: 0xE86A7A },
+      { x: lotW + pad - 2.2, z: 0.8, color: 0xF5C542 },
+      { x: porchX - 1.8, z: bMinY - 0.5, color: 0xE86A7A },
+      { x: porchX + 1.8, z: bMinY - 0.5, color: 0xFFFFFF }
+    ];
+    for (const sp of shrubPositions) {
+      const shrub = this.createFloweringShrub(0.52, sp.color);
+      shrub.position.set(sp.x, -0.02, sp.z);
+      this.siteGroup.add(shrub);
+    }
+
+    // E. Modern Planter Boxes flanking house entrance porch
+    const planter1 = this.createModernPlanter(0.55, 0.55, 0.70);
+    planter1.position.set(porchX - 1.2, -0.02, porchZ - 0.35);
+    const planter2 = this.createModernPlanter(0.55, 0.55, 0.70);
+    planter2.position.set(porchX + 1.2, -0.02, porchZ - 0.35);
+    this.siteGroup.add(planter1, planter2);
+
+    // 6. Swimming Pool / Koi Pond Features
     if (siteData && siteData.features) {
       for (const f of siteData.features) {
-        const fw = (f.maxX !== undefined && f.minX !== undefined) ? (f.maxX - f.minX) : 2.2;
-        const fd = (f.maxY !== undefined && f.minY !== undefined) ? (f.maxY - f.minY) : 3.8;
-        const fcx = (f.maxX !== undefined && f.minX !== undefined) ? (f.minX + f.maxX) / 2 : lotW * 0.75;
-        const fcy = (f.maxY !== undefined && f.minY !== undefined) ? (f.minY + f.maxY) / 2 : lotL * 0.35;
+        const fw = (f.maxX !== undefined && f.minX !== undefined) ? (f.maxX - f.minX) : 2.4;
+        const fd = (f.maxY !== undefined && f.minY !== undefined) ? (f.maxY - f.minY) : 4.2;
+        const fcx = (f.maxX !== undefined && f.minX !== undefined) ? (f.minX + f.maxX) / 2 : lotW * 0.78;
+        const fcy = (f.maxY !== undefined && f.minY !== undefined) ? (f.minY + f.maxY) / 2 : lotL * 0.36;
 
         // Marble coping border around pool/pond
-        const copingGeo = new THREE.BoxGeometry(fw + 0.28, 0.12, fd + 0.28);
+        const copingGeo = new THREE.BoxGeometry(fw + 0.32, 0.12, fd + 0.32);
         const coping = new THREE.Mesh(copingGeo, this.materials.marbleCarrara);
         coping.position.set(fcx, -0.02, fcy);
         coping.receiveShadow = true;
@@ -671,9 +1203,36 @@ export class Viewer3D {
       }
     }
 
+    // Apply Warm Architectural Sky & Sunlight Atmosphere
+    this.setupWarmSky(true);
+
     this.scene.add(this.siteGroup);
+    return this.siteGroup;
   }
 
+  /**
+   * Backward-compatible delegation to buildLandscapeContext
+   */
+  buildSite(siteData, metadata = {}) {
+    return this.buildLandscapeContext(siteData, metadata);
+  }
+
+  /**
+   * Toggle 3D landscape context visibility
+   * @param {boolean} visible
+   */
+  setLandscapeVisible(visible) {
+    if (this.siteGroup) {
+      this.siteGroup.visible = Boolean(visible);
+      this._cutawayDirty = true;
+      this.invalidate();
+    }
+  }
+
+  /**
+   * Create realistic architectural shade tree
+   * @param {number} radius
+   */
   createTreeModel(radius = 0.8) {
     const tree = new THREE.Group();
     const scale = Math.max(0.65, Math.min(1.35, radius));
@@ -701,6 +1260,146 @@ export class Viewer3D {
 
     tree.add(canopyMain, canopySub);
     return tree;
+  }
+
+  /**
+   * Create tropical fan palm tree (cọ cảnh phong cách villa)
+   * @param {number} scale
+   */
+  createTropicalPalm(scale = 1.0) {
+    const palm = new THREE.Group();
+    const s = Math.max(0.6, Math.min(1.5, scale));
+
+    // Curved slender trunk using segmented cylinder
+    const trunkH = 3.2 * s;
+    const trunkGeo = new THREE.CylinderGeometry(0.09 * s, 0.14 * s, trunkH, 7);
+    const trunk = new THREE.Mesh(trunkGeo, this.materials.woodWalnut || this.materials.baseboardMat);
+    trunk.position.set(0, trunkH / 2, 0);
+    trunk.rotation.z = -0.06; // slight graceful lean
+    trunk.castShadow = true;
+    palm.add(trunk);
+
+    // Crown of radiating arching palm fronds
+    const frondCount = 9;
+    const foliageMat = this.materials.palmFoliage || this.materials.plantFoliageLight;
+    for (let fi = 0; fi < frondCount; fi++) {
+      const angle = (fi / frondCount) * Math.PI * 2;
+      const frondGroup = new THREE.Group();
+      frondGroup.position.set(0, trunkH - 0.1 * s, 0);
+      frondGroup.rotation.y = angle;
+
+      // Curved blade
+      const frondGeo = new THREE.ConeGeometry(0.35 * s, 1.65 * s, 4);
+      const frond = new THREE.Mesh(frondGeo, foliageMat);
+      frond.rotation.x = Math.PI / 2.6; // arch downward
+      frond.position.set(0, 0, 0.8 * s);
+      frond.scale.set(1.4, 1.0, 0.15); // flatten into leaf blade
+      frond.castShadow = true;
+      frondGroup.add(frond);
+      palm.add(frondGroup);
+    }
+    return palm;
+  }
+
+  /**
+   * Create slender columnar cypress (tùng tháp / trắc bách diệp)
+   * @param {number} scale
+   */
+  createColumnarCypress(scale = 1.0) {
+    const cypress = new THREE.Group();
+    const s = Math.max(0.6, Math.min(1.6, scale));
+
+    // Short trunk
+    const trunkGeo = new THREE.CylinderGeometry(0.08 * s, 0.11 * s, 0.6 * s, 6);
+    const trunk = new THREE.Mesh(trunkGeo, this.materials.woodWalnut);
+    trunk.position.y = 0.3 * s;
+    trunk.castShadow = true;
+    cypress.add(trunk);
+
+    // Layered conical / ellipsoidal evergreen foliage
+    const foliageMat = this.materials.cypressFoliage || this.materials.treeFoliage;
+    const levels = [
+      { r: 0.48 * s, h: 1.5 * s, y: 1.2 * s },
+      { r: 0.38 * s, h: 1.4 * s, y: 2.1 * s },
+      { r: 0.24 * s, h: 1.2 * s, y: 2.9 * s }
+    ];
+    for (const lvl of levels) {
+      const coneGeo = new THREE.ConeGeometry(lvl.r, lvl.h, 7);
+      const coneMesh = new THREE.Mesh(coneGeo, foliageMat);
+      coneMesh.position.y = lvl.y;
+      coneMesh.castShadow = true;
+      coneMesh.receiveShadow = true;
+      cypress.add(coneMesh);
+    }
+    return cypress;
+  }
+
+  /**
+   * Create low rounded flowering shrub (bụi cây viền hoa)
+   * @param {number} radius
+   * @param {number} [flowerColor]
+   */
+  createFloweringShrub(radius = 0.55, flowerColor = null) {
+    const shrub = new THREE.Group();
+    const r = Math.max(0.35, Math.min(0.85, radius));
+
+    // Green foliage sphere
+    const foliageGeo = new THREE.DodecahedronGeometry(r, 1);
+    const foliageMesh = new THREE.Mesh(foliageGeo, this.materials.plantFoliageLight || this.materials.treeFoliage);
+    foliageMesh.position.y = r * 0.85;
+    foliageMesh.scale.set(1.15, 0.85, 1.15);
+    foliageMesh.receiveShadow = true;
+    shrub.add(foliageMesh);
+
+    // Decorative flower blossom specks
+    const blossomMat = flowerColor
+      ? new THREE.MeshStandardMaterial({ color: flowerColor, roughness: 0.5 })
+      : (this.materials.flowerBlossomWarm || this.materials.pillowAccentTerra);
+
+    const blossomCount = 6;
+    for (let bi = 0; bi < blossomCount; bi++) {
+      const bGeo = new THREE.SphereGeometry(r * 0.12, 4, 4);
+      const bMesh = new THREE.Mesh(bGeo, blossomMat);
+      const theta = (bi / blossomCount) * Math.PI * 2;
+      const phi = 0.4 + (bi % 3) * 0.3;
+      bMesh.position.set(
+        Math.cos(theta) * Math.sin(phi) * r * 1.05,
+        foliageMesh.position.y + Math.cos(phi) * r * 0.85,
+        Math.sin(theta) * Math.sin(phi) * r * 1.05
+      );
+      shrub.add(bMesh);
+    }
+    return shrub;
+  }
+
+  /**
+   * Create modern ceramic planter box (chậu cây sảnh đón)
+   */
+  createModernPlanter(w = 0.5, d = 0.5, h = 0.65) {
+    const planter = new THREE.Group();
+    const potGeo = new THREE.BoxGeometry(w, h, d);
+    const potMat = this.materials.ceramicVase || this.materials.exteriorAccentWall;
+    const pot = new THREE.Mesh(potGeo, potMat);
+    pot.position.y = h / 2;
+    pot.castShadow = true;
+    pot.receiveShadow = true;
+    planter.add(pot);
+
+    // Soil
+    const soilGeo = new THREE.BoxGeometry(w - 0.06, 0.04, d - 0.06);
+    const soil = new THREE.Mesh(soilGeo, this.materials.asphaltRoad || this.materials.woodWalnut);
+    soil.position.y = h;
+    planter.add(soil);
+
+    // Upright plant leaves
+    const plantGeo = new THREE.ConeGeometry(w * 0.42, h * 0.95, 5);
+    const plantMat = this.materials.plantFoliageLight;
+    const plant = new THREE.Mesh(plantGeo, plantMat);
+    plant.position.y = h + (h * 0.95) / 2;
+    plant.castShadow = true;
+    planter.add(plant);
+
+    return planter;
   }
 
   /**
@@ -738,10 +1437,10 @@ export class Viewer3D {
       const cy = (minY + maxY) / 2;
 
       // 1. Structural Slab Box from y = -0.18m to y = -0.002m (height = 0.178m, center = -0.091m)
-      const slabH = 0.178;
-      const slabGeo = new THREE.BoxGeometry(w, slabH, d);
+      const slabH = 0.18;
+      const slabGeo = this.createChamferedBoxGeometry(w, slabH, d, 0.003, 2);
       const slabMesh = new THREE.Mesh(slabGeo, this.materials.concreteSlab);
-      slabMesh.position.set(cx, -0.091, cy);
+      slabMesh.position.set(cx, -slabH / 2 - 0.002, cy);
       slabMesh.receiveShadow = true;
       slabMesh.castShadow = true;
       slabMesh.userData = { bimCategory: 'structure', floorId: floor.id, isSlab: true };
@@ -777,7 +1476,7 @@ export class Viewer3D {
           const voidEdgeH = 0.178;
           const voidFrameThick = 0.04;
           const edgeTrimFront = new THREE.Mesh(
-            new THREE.BoxGeometry(hx1 - hx0, voidEdgeH, voidFrameThick),
+            this.createChamferedBoxGeometry(hx1 - hx0, voidEdgeH, voidFrameThick, 0.002, 1),
             this.materials.concreteSlab
           );
           edgeTrimFront.position.set((hx0 + hx1) / 2, -0.091, hy0 - voidFrameThick / 2);
@@ -899,7 +1598,7 @@ export class Viewer3D {
     }
 
     // Ensure upper floors also have a dark slate balcony strip along the front edge
-    if (floorIdx > 0 || floor.id !== 'floor_1') {
+    if (!floor.metadata?.roomGrid && (floorIdx > 0 || floor.id !== 'floor_1')) {
       const balDepth = Math.min(1.05, (primarySlab.maxY - primarySlab.minY) * 0.14);
       addZonePatchAvoidStair(
         primarySlab.minX + 0.06,
@@ -916,7 +1615,7 @@ export class Viewer3D {
   buildColumns(floor, group) {
     for (const col of floor.columns) {
       const colH = Math.max(0.5, (col.height || floor.height) - 0.006);
-      const geo = new THREE.BoxGeometry(col.sizeX, colH, col.sizeY);
+      const geo = this.createChamferedBoxGeometry(col.sizeX, colH, col.sizeY, 0.003, 2);
       const mesh = new THREE.Mesh(geo, this.materials.columnConcrete);
       mesh.position.set(col.x, 0.003 + colH / 2, col.y);
       mesh.castShadow = true;
@@ -936,9 +1635,33 @@ export class Viewer3D {
     const bCenterX = (slab.minX + slab.maxX) / 2;
     const bCenterZ = (slab.minY + slab.maxY) / 2;
 
-    // Reset claimed flags on doors and windows before matching to walls
-    for (const d of (floor.doors || [])) d._claimed = false;
-    for (const w of (floor.windows || [])) w._claimed = false;
+    // Assign openings before building meshes so wall order cannot steal a nearby opening.
+    const allWalls = [...floor.exteriorWalls, ...floor.interiorWalls];
+    const openingWall = new Map();
+    for (const opening of [...floor.doors, ...floor.windows]) {
+      const { p1, p2 } = opening;
+      const x = p1 && p2 ? (p1.x + p2.x) / 2 : opening.cx ?? opening.x ?? p1?.x;
+      const z = p1 && p2 ? (p1.y + p2.y) / 2 : opening.cy ?? opening.y ?? p1?.y;
+      let best = Infinity;
+      for (const wall of allWalls) {
+        const dx = wall.p2.x - wall.p1.x;
+        const dz = wall.p2.y - wall.p1.y;
+        const length = Math.hypot(dx, dz);
+        if (length < 0.1 || wall.height < 1.2) continue;
+        const along = ((x - wall.p1.x) * dx + (z - wall.p1.y) * dz) / length;
+        const across = Math.abs((z - wall.p1.y) * dx - (x - wall.p1.x) * dz) / length;
+        if (along < -0.1 || along > length + 0.1 || across > Math.max(0.26, wall.thickness || 0.15)) continue;
+        const parallel = p1 && p2
+          ? Math.abs((p2.x - p1.x) * dz - (p2.y - p1.y) * dx) / (length * Math.hypot(p2.x - p1.x, p2.y - p1.y))
+          : Number.isFinite(opening.rotation) ? Math.abs(Math.sin(opening.rotation + Math.atan2(dz, dx))) : 0;
+        const score = across + (parallel || 0) * 0.2 + Math.max(0, -along, along - length);
+        if (score < best) {
+          best = score;
+          openingWall.set(opening, wall);
+        }
+      }
+    }
+    const openingsFor = (items, wall) => items.filter(item => openingWall.get(item) === wall);
 
     const normalMap = {
       south: new THREE.Vector3(0, 0, -1),
@@ -952,7 +1675,7 @@ export class Viewer3D {
       const dx = ew.p2.x - ew.p1.x;
       const dy = ew.p2.y - ew.p1.y;
       const length = Math.hypot(dx, dy);
-      if (length < 0.2) continue;
+      if (length < 0.1) continue;
 
       const wallGroup = new THREE.Group();
       wallGroup.name = ew.id || `ext_wall_${ew.orientation}`;
@@ -964,20 +1687,19 @@ export class Viewer3D {
         bimCategory: 'walls_openings'
       };
 
-      const wallMat = ew.orientation === 'south'
-        ? this.materials.exteriorWall
-        : this.materials.exteriorWall;
+      const wallMat = this.materials.exteriorWall;
 
       // A) fullWallGroup: Full-height segmented wall + windows/doors/balcony railings on this wall
-      const fullWallGroup = this.buildSegmentedWallGroup(
+      const fullWallGroup = this.buildWallWithOpenings(
         ew,
-        floor.doors || [],
-        floor.windows || [],
+        openingsFor(floor.doors, ew),
+        openingsFor(floor.windows, ew),
         wallMat,
         true
       );
       fullWallGroup.name = `${wallGroup.name}_full`;
       fullWallGroup.userData = {
+        ...fullWallGroup.userData,
         type: 'wall',
         name: `Tường ngoại thất (${ew.orientation})`,
         isExteriorCutawayWall: true,
@@ -989,13 +1711,18 @@ export class Viewer3D {
       // Add balcony railing (railing_iron_baluster) and lush greenery planters (balcony_planter_greenery)
       // on upper-floor front balconies & terraces (placed on group so visible in both Dollhouse and Facade modes)
       if (ew.orientation === 'south' && (floorIdx > 0 || floor.id !== 'floor_1')) {
-        const railSpan = length * 0.78;
+        const balcony = new THREE.Mesh(new THREE.BoxGeometry(length, 0.18, 1.12), this.materials.interiorPlaster);
+        balcony.position.set((ew.p1.x + ew.p2.x) / 2, -0.09, ew.p1.y - 0.56);
+        balcony.castShadow = balcony.receiveShadow = true;
+        balcony.userData.bimCategory = 'structure';
+        group.add(balcony);
+        const railSpan = length - 0.12;
         const rail = this.assetLibrary.instantiateAsset(
           'railing_iron_baluster',
           { width: railSpan, height: 1.05, depth: 0.08, rotation: 0 },
           this.materials
         );
-        rail.position.set((ew.p1.x + ew.p2.x) / 2, 0.003, ew.p1.y - ew.thickness * 0.35);
+        rail.position.set((ew.p1.x + ew.p2.x) / 2, 0.003, ew.p1.y - 1.05);
         rail.userData = {
           ...rail.userData,
           bimCategory: 'walls_openings',
@@ -1014,7 +1741,7 @@ export class Viewer3D {
         ];
         const existingFurn = floor.furniture || [];
         for (const px of planterPositions) {
-          const py = ew.p1.y + 0.32;
+          const py = ew.p1.y - 0.83;
           const alreadyHasPlanter = existingFurn.some(
             it => Math.hypot((it.cx || 0) - px, (it.cy || 0) - py) < 0.75
           );
@@ -1039,50 +1766,64 @@ export class Viewer3D {
         }
       }
 
-      // B) cutawayStubMesh: Low stub wall (20cm / 0.20m height) + crisp dark gray #3D3D3D section cap + 8cm baseboard
-      const stubHeight = 0.20;
+      const stubHeight = 0.25;
       const angle = Math.atan2(dy, dx);
       const midX = (ew.p1.x + ew.p2.x) / 2;
       const midY = (ew.p1.y + ew.p2.y) / 2;
-
       const cutawayStubMesh = new THREE.Group();
-      cutawayStubMesh.name = `${wallGroup.name}_stub`;
+      cutawayStubMesh.name = wallGroup.name + '_stub';
       cutawayStubMesh.position.set(midX, 0, midY);
       cutawayStubMesh.rotation.y = -angle;
-      cutawayStubMesh.userData = {
-        type: 'wall_stub',
-        orientation: ew.orientation,
-        floorId: floor.id,
-        stubHeight: 0.20,
-        capColor: '#3D3D3D',
-        bimCategory: 'walls_openings'
+      cutawayStubMesh.userData = { type: 'wall_stub', floorId: floor.id, stubHeight, bimCategory: 'walls_openings' };
+      const extDoorsOnWall = fullWallGroup.userData.openings.filter(opening => opening.kind === 'door');
+
+      const addStubSegment = (s0, s1) => {
+        const segLen = s1 - s0;
+        if (segLen < 0.04) return;
+        const segCenterLocal = (s0 + s1) / 2 - length / 2;
+
+        const stubBodyHeight = stubHeight - 0.018;
+        const stubBodyGeo = new THREE.BoxGeometry(segLen, stubBodyHeight, ew.thickness);
+        const stubBody = new THREE.Mesh(stubBodyGeo, this.materials.interiorPlaster);
+        stubBody.position.set(segCenterLocal, 0.003 + stubBodyHeight / 2, 0);
+        stubBody.castShadow = true;
+        stubBody.receiveShadow = true;
+        stubBody.userData = { bimCategory: 'walls_openings' };
+
+        const stubBaseboardGeo = this.createChamferedBoxGeometry(segLen, 0.08, ew.thickness + 0.014, 0.002, 1);
+        const stubBaseboard = new THREE.Mesh(stubBaseboardGeo, this.materials.baseboardMat);
+        stubBaseboard.position.set(segCenterLocal, 0.003 + 0.04, 0);
+        stubBaseboard.castShadow = false;
+        stubBaseboard.receiveShadow = true;
+        stubBaseboard.userData = { bimCategory: 'walls_openings' };
+
+        const capGeo = this.createChamferedBoxGeometry(segLen + 0.004, 0.018, ew.thickness + 0.008, 0.002, 1);
+        const capMesh = new THREE.Mesh(capGeo, this.materials.cutawayCapMat);
+        capMesh.position.set(segCenterLocal, 0.003 + stubHeight - 0.009, 0);
+        capMesh.userData = { bimCategory: 'walls_openings', capColor: '#3B3E45' };
+
+        cutawayStubMesh.add(stubBody, stubBaseboard, capMesh);
       };
 
-      const stubBodyGeo = new THREE.BoxGeometry(length, stubHeight, ew.thickness);
-      const stubBody = new THREE.Mesh(stubBodyGeo, this.materials.interiorPlaster);
-      stubBody.position.set(0, 0.003 + stubHeight / 2, 0);
-      stubBody.castShadow = true;
-      stubBody.receiveShadow = true;
-      stubBody.userData = { bimCategory: 'walls_openings' };
-
-      const stubBaseboardGeo = new THREE.BoxGeometry(length, 0.08, ew.thickness + 0.014);
-      const stubBaseboard = new THREE.Mesh(stubBaseboardGeo, this.materials.baseboardMat);
-      stubBaseboard.position.set(0, 0.003 + 0.04, 0);
-      stubBaseboard.castShadow = false;
-      stubBaseboard.receiveShadow = true;
-      stubBaseboard.userData = { bimCategory: 'walls_openings' };
-
-      const capGeo = new THREE.BoxGeometry(length + 0.004, 0.018, ew.thickness + 0.008);
-      const capMesh = new THREE.Mesh(capGeo, this.materials.cutawayCapMat);
-      capMesh.position.set(0, 0.003 + stubHeight + 0.009, 0);
-      capMesh.userData = { bimCategory: 'walls_openings', capColor: '#3D3D3D' };
-
-      cutawayStubMesh.add(stubBody, stubBaseboard, capMesh);
+      let stubCursor = 0;
+      for (const d of extDoorsOnWall) {
+        if (d.t0 > stubCursor + 0.03) {
+          addStubSegment(stubCursor, d.t0);
+        }
+        stubCursor = d.t1;
+      }
+      if (length > stubCursor + 0.03) {
+        addStubSegment(stubCursor, length);
+      }
 
       wallGroup.add(fullWallGroup, cutawayStubMesh);
       group.add(wallGroup);
 
-      const outwardNormal = normalMap[ew.orientation] || new THREE.Vector3(0, 0, -1);
+      const outwardNormal = ew.outwardNormal
+        ? new THREE.Vector3(ew.outwardNormal.x, 0, ew.outwardNormal.z).normalize()
+        : normalMap[ew.orientation] || new THREE.Vector3(-dy, 0, dx).normalize();
+      if (!ew.outwardNormal && !normalMap[ew.orientation] &&
+          outwardNormal.dot(new THREE.Vector3(midX - bCenterX, 0, midY - bCenterZ)) < 0) outwardNormal.negate();
       this.exteriorWallEntries.push({
         wallGroup,
         fullWallGroup,
@@ -1100,12 +1841,12 @@ export class Viewer3D {
       const dx = iw.p2.x - iw.p1.x;
       const dy = iw.p2.y - iw.p1.y;
       const length = Math.hypot(dx, dy);
-      if (length < 0.2) continue;
+      if (length < 0.1) continue;
 
-      const intrGroup = this.buildSegmentedWallGroup(
+      const intrGroup = this.buildWallWithOpenings(
         iw,
-        floor.doors || [],
-        [],
+        openingsFor(floor.doors, iw),
+        openingsFor(floor.windows, iw),
         this.materials.interiorPlaster,
         false
       );
@@ -1117,7 +1858,7 @@ export class Viewer3D {
       };
 
       // Dark architectural top section cap on interior walls for crisp dollhouse readability
-      const capGeo = new THREE.BoxGeometry(length, 0.014, (iw.thickness || 0.15) + 0.004);
+      const capGeo = new THREE.BoxGeometry(length, 0.014, iw.thickness || 0.15);
       const capMesh = new THREE.Mesh(capGeo, this.materials.cutawayCapMat);
       capMesh.position.set(length / 2, iw.height + 0.007, 0);
       capMesh.userData = { bimCategory: 'walls_openings' };
@@ -1125,14 +1866,17 @@ export class Viewer3D {
 
       group.add(intrGroup);
     }
+    return openingWall;
   }
 
   /**
    * Segment a wall line around any doors and windows that lie on it,
    * building left/right piers, window sill walls, lintel headers, baseboards,
    * and embedding the 3D door/window assemblies inside the wall openings.
+   * Guarantees true CSG cutouts so openings are physically hollow and
+   * walls NEVER pass through door or window openings.
    */
-  buildSegmentedWallGroup(wall, doors, windows, wallMat, isExterior = false) {
+  buildWallWithOpenings(wall, doors, windows, wallMat, isExterior = false) {
     const x1 = wall.p1.x;
     const y1 = wall.p1.y;
     const x2 = wall.p2.x;
@@ -1140,6 +1884,8 @@ export class Viewer3D {
     const dx = x2 - x1;
     const dy = y2 - y1;
     const L = Math.hypot(dx, dy);
+    if (L < 0.1) return new THREE.Group();
+
     const angle = Math.atan2(dy, dx);
     const ux = dx / L;
     const uy = dy / L;
@@ -1151,78 +1897,152 @@ export class Viewer3D {
     segGroup.position.set(x1, 0, y1);
     segGroup.rotation.y = -angle;
 
-    const matchedOpenings = [];
+    // 1. Match and compute door intervals along this wall
+    const matchedDoors = [];
+    for (const door of (doors || [])) {
 
-    // Match windows along this wall
-    for (const win of windows) {
-      if (win._claimed || !win.p1 || !win.p2) continue;
-      const wmx = (win.p1.x + win.p2.x) / 2;
-      const wmy = (win.p1.y + win.p2.y) / 2;
-      const perp = Math.abs(-(wmx - x1) * uy + (wmy - y1) * ux);
-      const tCenter = (wmx - x1) * ux + (wmy - y1) * uy;
-      const winLen = Math.hypot(win.p2.x - win.p1.x, win.p2.y - win.p1.y);
-      const wux = (win.p2.x - win.p1.x) / Math.max(0.01, winLen);
-      const wuy = (win.p2.y - win.p1.y) / Math.max(0.01, winLen);
-      const align = Math.abs(ux * wux + uy * wuy);
-
-      if (perp < 0.42 && align > 0.85 && tCenter > 0.2 && tCenter < L - 0.2) {
-        win._claimed = true;
-        const halfW = Math.min(winLen / 2, (L - 0.3) / 2);
-        const sillY = Math.max(0.35, win.sillHeight ?? 0.85);
-        const winH = Math.min(H - sillY - 0.18, win.windowHeight ?? 1.8);
-        matchedOpenings.push({
-          kind: 'window',
-          t0: Math.max(0.12, tCenter - halfW),
-          t1: Math.min(L - 0.12, tCenter + halfW),
-          sillY,
-          topY: sillY + winH,
-          raw: win
-        });
+      let dmx, dmy, dw;
+      if (door.p1 && door.p2 && Math.hypot(door.p2.x - door.p1.x, door.p2.y - door.p1.y) > 0.3) {
+        dmx = (door.p1.x + door.p2.x) / 2;
+        dmy = (door.p1.y + door.p2.y) / 2;
+        dw = Math.hypot(door.p2.x - door.p1.x, door.p2.y - door.p1.y);
+      } else {
+        dmx = door.cx != null ? door.cx : (door.x != null ? door.x : (door.p1 ? door.p1.x : (door.points?.[0]?.x ?? 0)));
+        dmy = door.cy != null ? door.cy : (door.y != null ? door.y : (door.p1 ? door.p1.y : (door.points?.[0]?.y ?? 0)));
+        dw = door.width || 0.92;
       }
-    }
 
-    // Match doors along this wall
-    for (const door of doors) {
-      if (door._claimed) continue;
-      const dmx = door.x;
-      const dmy = door.y;
       const perp = Math.abs(-(dmx - x1) * uy + (dmy - y1) * ux);
       const tCenter = (dmx - x1) * ux + (dmy - y1) * uy;
-      if (perp < 0.42 && tCenter > 0.15 && tCenter < L - 0.15) {
-        door._claimed = true;
-        const dw = Math.min(door.width || 0.92, L - 0.24);
-        const dh = Math.min(H - 0.15, door.height || 2.2);
-        const t0 = Math.max(0.10, Math.min(L - 0.10 - dw, tCenter - dw / 2));
-        matchedOpenings.push({
-          kind: 'door',
-          t0,
-          t1: t0 + dw,
-          sillY: yBottom,
-          topY: dh,
-          raw: door
-        });
-      }
-    }
 
-    // Sort openings along wall and resolve overlaps
-    matchedOpenings.sort((a, b) => a.t0 - b.t0);
-    const cleanOpenings = [];
-    for (const op of matchedOpenings) {
-      if (op.t1 - op.t0 < 0.35) continue;
-      if (cleanOpenings.length === 0) {
-        cleanOpenings.push(op);
-      } else {
-        const prev = cleanOpenings[cleanOpenings.length - 1];
-        if (op.t0 >= prev.t1 + 0.08) {
-          cleanOpenings.push(op);
+      // Match door if close to wall line and projected inside or near wall span
+      if (Number.isFinite(tCenter) && perp < Math.max(0.55, T * 1.5) && tCenter >= -0.15 && tCenter <= L + 0.15) {
+        const halfDW = dw / 2;
+        const t0 = Math.max(0.04, Math.min(L - 0.2, tCenter - halfDW));
+        const t1 = Math.min(L - 0.04, Math.max(0.2, tCenter + halfDW));
+        const dh = Math.min(H - 0.15, door.height || 2.2);
+
+        if (t1 - t0 >= 0.35) {
+          matchedDoors.push({
+            kind: 'door',
+            t0,
+            t1,
+            sillY: yBottom,
+            topY: dh,
+            raw: door
+          });
         }
       }
     }
 
+    // Merge overlapping doors if any
+    matchedDoors.sort((a, b) => a.t0 - b.t0);
+    const cleanDoors = [];
+    for (const d of matchedDoors) {
+      if (cleanDoors.length === 0) {
+        cleanDoors.push(d);
+      } else {
+        const prev = cleanDoors[cleanDoors.length - 1];
+        if (d.t0 <= prev.t1 + 0.05) {
+          prev.t1 = Math.max(prev.t1, d.t1);
+          prev.topY = Math.max(prev.topY, d.topY);
+        } else {
+          cleanDoors.push(d);
+        }
+      }
+    }
+
+    // 2. Match and compute window intervals along this wall
+    const matchedWindows = [];
+    for (const win of (windows || [])) {
+
+      let wmx, wmy, winLen;
+      if (win.p1 && win.p2) {
+        wmx = (win.p1.x + win.p2.x) / 2;
+        wmy = (win.p1.y + win.p2.y) / 2;
+        winLen = Math.hypot(win.p2.x - win.p1.x, win.p2.y - win.p1.y);
+      } else {
+        wmx = win.cx != null ? win.cx : (win.x != null ? win.x : (win.points?.[0]?.x ?? 0));
+        wmy = win.cy != null ? win.cy : (win.y != null ? win.y : (win.points?.[0]?.y ?? 0));
+        winLen = win.width || 1.4;
+      }
+
+      const perp = Math.abs(-(wmx - x1) * uy + (wmy - y1) * ux);
+      const tCenter = (wmx - x1) * ux + (wmy - y1) * uy;
+
+      if (Number.isFinite(tCenter) && perp < Math.max(0.55, T * 1.5) && tCenter >= -0.15 && tCenter <= L + 0.15) {
+        const halfW = winLen / 2;
+        const t0 = Math.max(0.04, Math.min(L - 0.2, tCenter - halfW));
+        const t1 = Math.min(L - 0.04, Math.max(0.2, tCenter + halfW));
+
+        if (t1 - t0 >= 0.25) {
+          const sillY = Math.max(0.35, win.sillHeight ?? 0.85);
+          const winH = Math.min(H - sillY - 0.18, win.windowHeight ?? 1.8);
+          matchedWindows.push({
+            kind: 'window',
+            t0,
+            t1,
+            sillY,
+            topY: sillY + winH,
+            raw: win
+          });
+        }
+      }
+    }
+
+    // 3. Resolve Door / Window Overlaps (DOORS TAKE ABSOLUTE PRECEDENCE OVER SILL/PARAPET)
+    // Any window that overlaps a door is cleanly split into left/right window segments flanking the door,
+    // ensuring the door opening is 100% hollow to the floor (zero sill wall cutting through doors).
+    const splitWindows = [];
+    for (const win of matchedWindows) {
+      let segments = [{ t0: win.t0, t1: win.t1, sillY: win.sillY, topY: win.topY, raw: win.raw }];
+      for (const door of cleanDoors) {
+        const nextSegments = [];
+        for (const seg of segments) {
+          if (door.t1 <= seg.t0 + 0.05 || door.t0 >= seg.t1 - 0.05) {
+            nextSegments.push(seg);
+          } else {
+            // Overlapping: create left piece if wide enough
+            if (door.t0 > seg.t0 + 0.25) {
+              nextSegments.push({ ...seg, t0: seg.t0, t1: door.t0 });
+            }
+            // Create right piece if wide enough
+            if (door.t1 < seg.t1 - 0.25) {
+              nextSegments.push({ ...seg, t0: door.t1, t1: seg.t1 });
+            }
+          }
+        }
+        segments = nextSegments;
+      }
+      for (const s of segments) {
+        if (s.t1 - s.t0 >= 0.25) {
+          splitWindows.push({ kind: 'window', ...s });
+        }
+      }
+    }
+
+    // 4. Combine all clean openings and sort along wall
+    const allOpenings = [...cleanDoors, ...splitWindows];
+    allOpenings.sort((a, b) => a.t0 - b.t0);
+
+    const cleanOpenings = [];
+    for (const op of allOpenings) {
+      if (cleanOpenings.length === 0) {
+        cleanOpenings.push(op);
+      } else {
+        const prev = cleanOpenings[cleanOpenings.length - 1];
+        if (op.t0 >= prev.t1 - 0.02) {
+          if (op.t0 < prev.t1) op.t0 = prev.t1;
+          if (op.t1 - op.t0 >= 0.25) cleanOpenings.push(op);
+        }
+      }
+    }
+
+    // 5. True CSG Mesh Segmenting (physically hollow door/window openings)
     const addWallBox = (xStart, xEnd, yStart, yEnd) => {
       const wLen = xEnd - xStart;
       const wHeight = yEnd - yStart;
-      if (wLen < 0.03 || wHeight < 0.03) return;
+      if (wLen < 1e-6 || wHeight < 1e-6) return;
       const geo = new THREE.BoxGeometry(wLen, wHeight, T);
       const mesh = new THREE.Mesh(geo, wallMat);
       mesh.position.set((xStart + xEnd) / 2, (yStart + yEnd) / 2, 0);
@@ -1236,7 +2056,7 @@ export class Viewer3D {
       const bLen = xEnd - xStart;
       if (bLen < 0.08) return;
       const bHeight = 0.08;
-      const geo = new THREE.BoxGeometry(bLen, bHeight, T + 0.016);
+      const geo = this.createChamferedBoxGeometry(bLen, bHeight, T + 0.016, 0.002, 1);
       const mesh = new THREE.Mesh(geo, this.materials.baseboardMat);
       mesh.position.set((xStart + xEnd) / 2, yBottom + bHeight / 2, 0);
       mesh.castShadow = false;
@@ -1248,7 +2068,7 @@ export class Viewer3D {
     let cursor = 0;
     for (const op of cleanOpenings) {
       // Left solid pier before opening
-      if (op.t0 > cursor + 0.03) {
+      if (op.t0 > cursor) {
         addWallBox(cursor, op.t0, yBottom, H);
         addBaseboard(cursor, op.t0);
       }
@@ -1261,7 +2081,7 @@ export class Viewer3D {
         addWallBox(op.t0, op.t1, op.topY, H);
       }
 
-      // Sill wall below window + 3D Window / Door assembly
+      // Parapet wall below window & 3D Opening Assemblies
       if (op.kind === 'window') {
         if (op.sillY > yBottom + 0.03) {
           addWallBox(op.t0, op.t1, yBottom, op.sillY);
@@ -1281,15 +2101,12 @@ export class Viewer3D {
         winMesh.rotation.set(0, 0, 0);
         segGroup.add(winMesh);
       } else if (op.kind === 'door') {
-        const doorMesh = FurnitureGenerator.buildDetailedDoor(
-          {
-            width: ow,
-            height: op.topY,
-            wallThickness: T
-          },
-          this.materials
-        );
-        doorMesh.position.set(oCenter, yBottom, 0);
+        // Door opening is 100% physically hollow to floor - ZERO parapet wall!
+        const glazed = isExterior && op.raw.asset_id === 'door_balcony_glass';
+        const doorMesh = glazed
+          ? FurnitureGenerator.buildDetailedWindow({ width: ow, sillHeight: 0, windowHeight: op.topY, wallThickness: T }, this.materials)
+          : FurnitureGenerator.buildDetailedDoor({ width: ow, height: op.topY, wallThickness: T }, this.materials);
+        doorMesh.position.set(oCenter, yBottom + (glazed ? op.topY / 2 : 0), 0);
         doorMesh.rotation.set(0, 0, 0);
         segGroup.add(doorMesh);
       }
@@ -1298,12 +2115,49 @@ export class Viewer3D {
     }
 
     // Right solid pier after last opening
-    if (L > cursor + 0.03) {
+    if (L > cursor) {
       addWallBox(cursor, L, yBottom, H);
       addBaseboard(cursor, L);
     }
 
+    segGroup.userData.openings = cleanOpenings;
     return segGroup;
+  }
+
+  buildFacadeRoof(floor, group) {
+    if (!floor.metadata?.roomGrid || !floor.slabs.length) return;
+    const { minX, maxX, minY, maxY } = floor.slabs[0];
+    const terrace = floor.rooms.find(room => room.type === 'terrace' && room.isOutdoor);
+    const roofEnd = terrace?.bounds.minY ?? maxY;
+    const roof = new THREE.Mesh(new THREE.BoxGeometry(maxX - minX + 0.24, 0.18, roofEnd - minY + 0.24),
+      this.materials.interiorPlaster);
+    roof.position.set((maxX + minX) / 2, floor.height + 0.09, (roofEnd + minY) / 2);
+    roof.castShadow = roof.receiveShadow = true;
+    roof.userData = { bimCategory: 'structure', facadeRoof: true };
+    group.add(roof);
+  }
+
+  buildPergola(floor, group) {
+    const terrace = floor.rooms.find(room => room.type === 'terrace' && room.isOutdoor);
+    if (!floor.metadata?.terrace || !terrace) return;
+    const { minX, maxX, minY, maxY } = terrace.bounds;
+    const left = minX + 0.28, right = maxX - 0.28;
+    const front = minY + (maxY - minY) * 0.42, back = maxY - 0.25;
+    const height = 2.68;
+    const addBeam = (w, h, d, x, y, z) => {
+      const beam = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), this.materials.woodOak);
+      beam.position.set(x, y, z);
+      beam.castShadow = beam.receiveShadow = true;
+      beam.userData.bimCategory = 'structure';
+      group.add(beam);
+    };
+    for (const z of [front, back]) {
+      for (const x of [left, right]) addBeam(0.16, height, 0.16, x, height / 2, z);
+      addBeam(right - left + 0.2, 0.17, 0.14, (left + right) / 2, height, z);
+    }
+    for (let x = left; x <= right; x += 0.42) {
+      addBeam(0.09, 0.15, back - front + 0.24, x, height + 0.15, (front + back) / 2);
+    }
   }
 
   buildStairs(floor, group) {
@@ -1313,15 +2167,15 @@ export class Viewer3D {
     }
   }
 
-  buildDoorsAndWindows(floor, group) {
+  buildDoorsAndWindows(floor, group, embeddedOpenings) {
     // Only build doors/windows that were not already embedded into segmented walls
     for (const win of (floor.windows || [])) {
-      if (win._claimed) continue;
+      if (embeddedOpenings.has(win)) continue;
       const winGroup = FurnitureGenerator.buildDetailedWindow(win, this.materials);
       group.add(winGroup);
     }
     for (const door of (floor.doors || [])) {
-      if (door._claimed) continue;
+      if (embeddedOpenings.has(door)) continue;
       const doorGroup = FurnitureGenerator.buildDetailedDoor(door, this.materials);
       doorGroup.position.y = 0.003;
       group.add(doorGroup);
@@ -1330,15 +2184,30 @@ export class Viewer3D {
 
   buildFurniture(floor, group) {
     const items = [...(floor.furniture || []), ...(floor.sanitary || [])];
+    const slabBounds = floor.slabs?.[0] || this.getBuildingCenterAndSpan();
+    if (!floor.rooms?.length) this.resolveWallMountedCollisions(items, floor.windows || [], slabBounds);
+
     for (const item of items) {
       const requestedAssetId = item.asset_id || item.assetId || item.type;
-      const furnModel = this.assetLibrary.instantiateAsset(requestedAssetId, item, this.materials);
+      const furnModel = this.assetLibrary.instantiateAsset(
+        requestedAssetId,
+        item,
+        this.materials,
+        { furnitureMode: this.furnitureMode }
+      );
       if (!furnModel.userData?.isGlbAsset) {
         this._needsGlbUpgrade = true;
       }
 
+      // Track active real billboard for cylindrical camera facing
+      if (furnModel.userData?.isRealBillboard && furnModel.userData?.billboardMesh) {
+        this.realBillboards.add(furnModel.userData.billboardMesh);
+      }
+
       // Place at y = +0.002m so internal rugs/contact shadows sit cleanly above floor finishes (zero Z-fighting)
-      furnModel.position.set(item.cx, 0.002, item.cy);
+      const posX = typeof item.cx === 'number' && !isNaN(item.cx) ? item.cx : ((slabBounds.minX + slabBounds.maxX) / 2);
+      const posZ = typeof item.cy === 'number' && !isNaN(item.cy) ? item.cy : ((slabBounds.minY + slabBounds.maxY) / 2);
+      furnModel.position.set(posX, 0.002, posZ);
 
       const wMm = Math.round((item.width || 1.0) * 1000);
       const dMm = Math.round((item.depth || 0.8) * 1000);
@@ -1353,13 +2222,15 @@ export class Viewer3D {
         asset_id: resolvedAssetId,
         assetId: resolvedAssetId,
         isGlbAsset: Boolean(furnModel.userData?.isGlbAsset),
+        isRealBillboard: Boolean(furnModel.userData?.isRealBillboard),
+        furnitureMode: this.furnitureMode,
         room: item.room || floor.name,
         dimensions: `${wMm} × ${dMm} × ${hMm} mm`,
         width: item.width,
         depth: item.depth,
         height: item.height,
         rotation: item.rotation || 0,
-        material: item.material || 'Vật liệu PBR Cao cấp',
+        material: item.material || (this.furnitureMode === 'real' ? 'Ảnh thật PBR Impostor' : 'Vật liệu PBR Cao cấp'),
         layer: item.layer || 'A-FURN',
         floorId: floor.id,
         floorName: floor.name,
@@ -1377,6 +2248,216 @@ export class Viewer3D {
       this.selectableObjects.push(furnModel);
       group.add(furnModel);
     }
+  }
+
+  /**
+   * Semantic Bounding Box Collision Check & Auto-Relocation for TV units and wall-mounted objects.
+   * Guarantees that TV units NEVER intersect or occlude windows.
+   * If a TV unit collides with any window, it is slid along the wall to an unobstructed segment,
+   * or placed on the opposite wall facing back into the room.
+   */
+  resolveWallMountedCollisions(items, windows = [], slab = null) {
+    if (!Array.isArray(items) || !Array.isArray(windows) || windows.length === 0) return 0;
+    const slabBounds = slab || { minX: 0, maxX: 10, minY: 0, maxY: 15 };
+    let resolvedCount = 0;
+
+    for (const item of items) {
+      const isTv = item.asset_id === 'tv_cabinet_wall_unit' ||
+        (item.name && item.name.toLowerCase().includes('tivi')) ||
+        (item.name && item.name.toLowerCase().includes('kệ tv')) ||
+        item.type === 'tv_console';
+
+      if (!isTv) continue;
+
+      if (typeof item.cx !== 'number' || isNaN(item.cx)) item.cx = (slabBounds.minX + slabBounds.maxX) / 2;
+      if (typeof item.cy !== 'number' || isNaN(item.cy)) item.cy = (slabBounds.minY + slabBounds.maxY) / 2;
+
+      const rot = item.rotation || 0;
+      const isRot = Math.abs(Math.sin(rot)) > 0.7;
+      const w = item.width || 2.2;
+      const d = item.depth || 0.46;
+      const spanX = isRot ? d : w;
+      const spanY = isRot ? w : d;
+      const halfX = spanX / 2;
+      const halfY = spanY / 2;
+
+      const checkCollision = (cx, cy, currentIsRot) => {
+        const hX = (currentIsRot ? d : w) / 2;
+        const hY = (currentIsRot ? w : d) / 2;
+        const box = {
+          minX: cx - hX,
+          maxX: cx + hX,
+          minY: cy - hY,
+          maxY: cy + hY
+        };
+
+        for (const win of windows) {
+          if (!win.p1 || !win.p2) continue;
+          const wMinX = Math.min(win.p1.x, win.p2.x);
+          const wMaxX = Math.max(win.p1.x, win.p2.x);
+          const wMinY = Math.min(win.p1.y, win.p2.y);
+          const wMaxY = Math.max(win.p1.y, win.p2.y);
+          const isWinVert = Math.abs(win.p2.x - win.p1.x) < Math.abs(win.p2.y - win.p1.y);
+
+          // 1. Direct AABB overlap check
+          const aabbOverlap = !(box.maxX < wMinX - 0.25 || box.minX > wMaxX + 0.25 || box.maxY < wMinY - 0.25 || box.minY > wMaxY + 0.25);
+          if (aabbOverlap) return true;
+
+          // 2. Same-wall sightline occlusion check (near wall plane and overlapping along wall)
+          if (currentIsRot && isWinVert) {
+            const distToWall = Math.abs(cx - (win.p1.x + win.p2.x) / 2);
+            if (distToWall < 1.25) {
+              const yOverlap = !(box.maxY < wMinY - 0.15 || box.minY > wMaxY + 0.15);
+              if (yOverlap) return true;
+            }
+          } else if (!currentIsRot && !isWinVert) {
+            const distToWall = Math.abs(cy - (win.p1.y + win.p2.y) / 2);
+            if (distToWall < 1.25) {
+              const xOverlap = !(box.maxX < wMinX - 0.15 || box.minX > wMaxX + 0.15);
+              if (xOverlap) return true;
+            }
+          }
+        }
+        return false;
+      };
+
+      if (!checkCollision(item.cx, item.cy, isRot)) continue;
+
+      console.warn(`[Viewer3D] Semantic collision detected: "${item.name}" intersects window. Auto-correcting position...`);
+
+      // Strategy 1: Slide TV along the current wall to an unobstructed segment
+      let resolved = false;
+      const deltas = [-1.4, 1.4, -2.2, 2.2, -3.0, 3.0, -3.8, 3.8, -4.6, 4.6];
+      for (const delta of deltas) {
+        const testCx = isRot ? item.cx : item.cx + delta;
+        const testCy = isRot ? item.cy + delta : item.cy;
+        if (testCx - halfX < slabBounds.minX + 0.05 || testCx + halfX > slabBounds.maxX - 0.05) continue;
+        if (testCy - halfY < slabBounds.minY + 0.05 || testCy + halfY > slabBounds.maxY - 0.05) continue;
+        if (!checkCollision(testCx, testCy, isRot)) {
+          item.cx = Math.round(testCx * 100) / 100;
+          item.cy = Math.round(testCy * 100) / 100;
+          resolved = true;
+          resolvedCount++;
+          console.info(`[Viewer3D] Successfully slid "${item.name}" along wall to (${item.cx}, ${item.cy})`);
+          break;
+        }
+      }
+
+      // Strategy 2: Place on opposite wall facing into the room
+      if (!resolved) {
+        let oppCx = item.cx;
+        let oppCy = item.cy;
+        let oppRot = item.rotation || 0;
+        let oppIsRot = isRot;
+
+        if (isRot) {
+          if (item.cx > (slabBounds.minX + slabBounds.maxX) / 2) {
+            oppCx = slabBounds.minX + halfX + 0.15;
+            oppRot = Math.PI / 2;
+          } else {
+            oppCx = slabBounds.maxX - halfX - 0.15;
+            oppRot = -Math.PI / 2;
+          }
+        } else {
+          if (item.cy > (slabBounds.minY + slabBounds.maxY) / 2) {
+            oppCy = slabBounds.minY + halfY + 0.15;
+            oppRot = 0;
+          } else {
+            oppCy = slabBounds.maxY - halfY - 0.15;
+            oppRot = Math.PI;
+          }
+        }
+
+        if (!checkCollision(oppCx, oppCy, oppIsRot)) {
+          item.cx = Math.round(oppCx * 100) / 100;
+          item.cy = Math.round(oppCy * 100) / 100;
+          item.rotation = oppRot;
+          resolved = true;
+          resolvedCount++;
+          console.info(`[Viewer3D] Successfully relocated "${item.name}" to opposite wall at (${item.cx}, ${item.cy})`);
+        } else {
+          for (const delta of deltas) {
+            const testCx = oppIsRot ? oppCx : oppCx + delta;
+            const testCy = oppIsRot ? oppCy + delta : oppCy;
+            if (testCx - halfX < slabBounds.minX + 0.05 || testCx + halfX > slabBounds.maxX - 0.05) continue;
+            if (testCy - halfY < slabBounds.minY + 0.05 || testCy + halfY > slabBounds.maxY - 0.05) continue;
+            if (!checkCollision(testCx, testCy, oppIsRot)) {
+              item.cx = Math.round(testCx * 100) / 100;
+              item.cy = Math.round(testCy * 100) / 100;
+              item.rotation = oppRot;
+              resolved = true;
+              resolvedCount++;
+              console.info(`[Viewer3D] Successfully slid "${item.name}" on opposite wall to (${item.cx}, ${item.cy})`);
+              break;
+            }
+          }
+        }
+      }
+    }
+    return resolvedCount;
+  }
+
+  /**
+   * Cylindrical Camera-Facing Billboarding for Photorealistic Real Furniture Impostors.
+   * Keeps quads perfectly vertical on the floor while smoothly facing the camera horizontally.
+   */
+  updateRealBillboards() {
+    if (!this.realBillboards || this.realBillboards.size === 0) return;
+    const camPos = this.camera.position;
+    const worldPos = new THREE.Vector3();
+    for (const bb of this.realBillboards) {
+      if (!bb || !bb.parent) {
+        this.realBillboards.delete(bb);
+        continue;
+      }
+      bb.getWorldPosition(worldPos);
+      const angle = Math.atan2(camPos.x - worldPos.x, camPos.z - worldPos.z);
+      const parentRotY = bb.parent.rotation?.y || 0;
+      const grandParentRotY = bb.parent.parent?.rotation?.y || 0;
+      bb.rotation.y = angle - (parentRotY + grandParentRotY);
+    }
+  }
+
+  /**
+   * Set Furniture Display Mode ('model' = 3D Procedural GLB, 'real' = Photorealistic Product Impostor)
+   * @param {'model'|'real'} mode
+   */
+  setFurnitureMode(mode) {
+    const targetMode = (mode === 'real') ? 'real' : 'model';
+    if (this.furnitureMode === targetMode) return;
+    this.furnitureMode = targetMode;
+    this.assetLibrary.furnitureMode = targetMode;
+
+    // 1. Remove existing furniture objects and clear billboard set
+    this.realBillboards.clear();
+    for (const floorGroup of this.floorGroups.values()) {
+      const toRemove = [];
+      for (const child of floorGroup.children) {
+        if (child.userData?.bimCategory === 'furniture') {
+          toRemove.push(child);
+        }
+      }
+      for (const m of toRemove) {
+        floorGroup.remove(m);
+        const selIdx = this.selectableObjects.indexOf(m);
+        if (selIdx !== -1) this.selectableObjects.splice(selIdx, 1);
+      }
+    }
+
+    // 2. Re-instantiate furniture in each floor group
+    if (this.project && Array.isArray(this.project.floors)) {
+      for (const floor of this.project.floors) {
+        const floorGroup = this.floorGroups.get(floor.id);
+        if (floorGroup) {
+          this.buildFurniture(floor, floorGroup);
+        }
+      }
+    }
+
+    // 3. Re-apply stage visibility, face camera, and invalidate render
+    this.setRenderingStage(this.currentStage, { skipCamera: true });
+    this.updateRealBillboards();
+    this.invalidate();
   }
 
   /**
@@ -1478,7 +2559,7 @@ export class Viewer3D {
     ctx.font = '700 22px "Plus Jakarta Sans", "Segoe UI", system-ui, sans-serif';
     ctx.fillStyle = '#1E1D1B';
     ctx.textAlign = 'center';
-    ctx.fillText(title.normalize('NFC').toUpperCase().substring(0, 24), 208, 54);
+    ctx.fillText(title.normalize('NFC').toUpperCase(), 208, 54, 365);
 
     ctx.font = '600 20px "Plus Jakarta Sans", "Segoe UI", system-ui, sans-serif';
     ctx.fillStyle = '#B45309';
@@ -1489,7 +2570,7 @@ export class Viewer3D {
     texture.colorSpace = THREE.SRGBColorSpace;
     const spriteMat = new THREE.SpriteMaterial({
       map: texture,
-      depthTest: false,
+      depthTest: true,
       transparent: true
     });
     const sprite = new THREE.Sprite(spriteMat);
@@ -1612,31 +2693,32 @@ export class Viewer3D {
     const showWallsStage = this.currentStage >= 3;
     const isCutawayMode = (this.viewMode === 'dollhouse' || this.viewMode === 'exploded');
     const camPos = this.camera.position;
+    for (const floor of this.floorGroups.values()) {
+      const roof = floor.children.find(child => child.userData.facadeRoof);
+      if (roof) roof.visible = showWallsStage && this.viewMode === 'facade';
+    }
 
-    for (const entry of this.exteriorWallEntries) {
-      if (!showWallsStage) {
-        entry.wallGroup.visible = false;
-        entry.fullWallGroup.visible = false;
-        entry.cutawayStubMesh.visible = false;
-        continue;
-      }
-
-      entry.wallGroup.visible = true;
-
-      if (!isCutawayMode) {
-        entry.fullWallGroup.visible = true;
-        entry.cutawayStubMesh.visible = false;
-      } else {
+    const facingByFloor = new Map();
+    if (isCutawayMode && showWallsStage) {
+      for (const entry of this.exteriorWallEntries) {
         const dx = camPos.x - entry.center.x;
-        const dy = camPos.y - entry.center.y;
         const dz = camPos.z - entry.center.z;
-        const len = Math.hypot(dx, dy, dz) || 1;
-        const dot = (entry.normal.x * dx + entry.normal.y * dy + entry.normal.z * dz) / len;
-
-        const facesCamera = dot > 0.15;
-        entry.fullWallGroup.visible = !facesCamera;
-        entry.cutawayStubMesh.visible = facesCamera;
+        const dot = (entry.normal.x * dx + entry.normal.z * dz) / (Math.hypot(dx, dz) || 1);
+        if (dot <= 0.15) continue;
+        if (!facingByFloor.has(entry.floorId)) facingByFloor.set(entry.floorId, new Map());
+        const faces = facingByFloor.get(entry.floorId);
+        const side = entry.normal.x.toFixed(4) + ':' + entry.normal.z.toFixed(4);
+        faces.set(side, Math.max(faces.get(side) || 0, dot));
       }
+    }
+    const cutByFloor = new Map([...facingByFloor].map(([id, sides]) =>
+      [id, new Set([...sides].sort((a, b) => b[1] - a[1]).slice(0, 2).map(([side]) => side))]));
+    for (const entry of this.exteriorWallEntries) {
+      const side = entry.normal.x.toFixed(4) + ':' + entry.normal.z.toFixed(4);
+      const cut = cutByFloor.get(entry.floorId)?.has(side) ?? false;
+      entry.wallGroup.visible = showWallsStage;
+      entry.fullWallGroup.visible = showWallsStage && !cut;
+      entry.cutawayStubMesh.visible = showWallsStage && cut;
     }
   }
 
@@ -1715,6 +2797,7 @@ export class Viewer3D {
   }
 
   setViewMode(mode) {
+    this.stopCinematicTour();
     this.viewMode = mode;
     this.walkthroughState.active = false;
     this.walkthroughState.walkTarget = null;
@@ -1725,16 +2808,14 @@ export class Viewer3D {
       group.visible = true;
     }
 
+    this.activeFloorId = null;
+    this.options.onFloorIsolated?.(null);
     const { cx, cy, maxDim, totalHeight } = this.getBuildingCenterAndSpan();
 
     if (mode === 'dollhouse') {
-      const dist = Math.max(maxDim * 1.28, totalHeight * 1.22, 16.5);
-      this.animateCameraTo(
-        new THREE.Vector3(cx + dist * 0.78, Math.max(13.5, totalHeight * 1.18), cy - dist * 0.86),
-        new THREE.Vector3(cx, totalHeight * 0.42, cy)
-      );
+      this.focusBuilding();
     } else if (mode === 'facade') {
-      const dist = Math.max(maxDim * 1.35, totalHeight * 1.38, 18.5);
+      const dist = Math.max(maxDim * 1.35, totalHeight * 1.38, 18.5) * Math.max(1, 0.63 / this.camera.aspect);
       this.animateCameraTo(
         new THREE.Vector3(cx + dist * 0.22, totalHeight * 0.52, cy - dist * 1.15),
         new THREE.Vector3(cx, totalHeight * 0.46, cy)
@@ -1746,7 +2827,7 @@ export class Viewer3D {
         idx++;
       }
       const explodedTop = totalHeight + Math.max(1, this.floorGroups.size - 1) * (this.explodedDistance || 4.5);
-      const dist = Math.max(maxDim * 1.45, 18.0);
+      const dist = Math.max(maxDim * 1.45, 18.0) * Math.max(1, 0.66 / this.camera.aspect);
       this.animateCameraTo(
         new THREE.Vector3(cx + dist * 0.88, explodedTop * 0.92, cy - dist * 0.92),
         new THREE.Vector3(cx, explodedTop * 0.42, cy)
@@ -1873,6 +2954,18 @@ export class Viewer3D {
   }
 
   /**
+   * Show all floors (reset floor isolation)
+   */
+  showAllFloors() {
+    for (const [_, grp] of this.floorGroups) {
+      grp.visible = true;
+    }
+    this._cutawayDirty = true;
+    this._invalidateShadowMap();
+    this.invalidate();
+  }
+
+  /**
    * Focus a specific floor: hide floors above it, keep it and floors below visible,
    * and smoothly animate the camera to a clear 3/4 overhead dollhouse angle.
    */
@@ -1898,7 +2991,7 @@ export class Viewer3D {
         new THREE.Vector3(cx, elev, cy)
       );
     } else {
-      const dist = Math.max(maxDim * 0.95, 10.5);
+      const dist = Math.max(maxDim * 1.02, 11) * Math.max(1, 0.65 / this.camera.aspect);
       this.animateCameraTo(
         new THREE.Vector3(cx + dist * 0.72, elev + dist * 0.68, cy - dist * 0.78),
         new THREE.Vector3(cx, elev + 1.2, cy)
@@ -1907,12 +3000,25 @@ export class Viewer3D {
   }
 
   focusBuilding() {
-    const { cx, cy, maxDim, totalHeight } = this.getBuildingCenterAndSpan();
-    const dist = Math.max(maxDim * 1.25, 13.5);
-    this.animateCameraTo(
-      new THREE.Vector3(cx + dist * 0.78, Math.max(12, totalHeight * 1.15), cy - dist * 0.86),
-      new THREE.Vector3(cx, totalHeight * 0.36, cy)
-    );
+    const { cx, cy, minX, maxX, minY, maxY, totalHeight } = this.getBuildingCenterAndSpan();
+    const target = new THREE.Vector3(cx, totalHeight * 0.48, cy);
+    const direction = new THREE.Vector3(0.76, 0.61, -0.89).normalize();
+    const right = new THREE.Vector3().crossVectors(this.camera.up, direction).normalize();
+    const up = new THREE.Vector3().crossVectors(direction, right).normalize();
+    const vertical = Math.tan(THREE.MathUtils.degToRad(this.camera.fov / 2));
+    const horizontal = vertical * this.camera.aspect;
+    let distance = 0;
+    for (const x of [minX - 0.2, maxX + 0.2]) {
+      for (const z of [minY - 1.2, maxY + 0.2]) {
+        for (const y of [-0.18, totalHeight + 0.2]) {
+          const corner = new THREE.Vector3(x, y, z).sub(target);
+          const fit = Math.max(Math.abs(corner.dot(right)) / (horizontal * 0.87),
+            Math.abs(corner.dot(up)) / (vertical * 0.8));
+          distance = Math.max(distance, corner.dot(direction) + fit);
+        }
+      }
+    }
+    this.animateCameraTo(target.clone().addScaledVector(direction, distance), target);
   }
 
   getBuildingCenterAndSpan() {
@@ -1920,12 +3026,12 @@ export class Viewer3D {
     let totalHeight = 11.0;
 
     if (this.bimData) {
-      const firstSlab = this.bimData.floors?.[0]?.slabs?.[0];
-      if (firstSlab) {
-        minX = firstSlab.minX;
-        maxX = firstSlab.maxX;
-        minY = firstSlab.minY;
-        maxY = firstSlab.maxY;
+      const slabs = this.bimData.floors.flatMap(floor => floor.slabs || []);
+      if (slabs.length) {
+        minX = Math.min(...slabs.map(slab => slab.minX));
+        maxX = Math.max(...slabs.map(slab => slab.maxX));
+        minY = Math.min(...slabs.map(slab => slab.minY));
+        maxY = Math.max(...slabs.map(slab => slab.maxY));
       } else if (this.bimData.metadata) {
         maxX = this.bimData.metadata.lot_width || 12;
         maxY = this.bimData.metadata.lot_length || 16;
@@ -1975,6 +3081,7 @@ export class Viewer3D {
    * Time-based camera transition (duration = 600ms, cubicOut easing: 1 - Math.pow(1 - t, 3))
    */
   animateCameraTo(targetPos, targetLookAt, duration = 600) {
+    this.stopCinematicTour();
     this.tweenStartPos.copy(this.camera.position);
     this.tweenStartLookAt.copy(this.controls.target);
     this.targetCameraPos = targetPos.clone();
@@ -1986,9 +3093,33 @@ export class Viewer3D {
     this.invalidate();
   }
 
+  /**
+   * Start a cinematic spline camera tour
+   * @param {string} [scenarioId='full_film']
+   * @param {number} [duration=30]
+   * @returns {CinematicTourDirector}
+   */
+  startCinematicTour(scenarioId = 'full_film', duration = 30) {
+    if (!this._tourDirector) {
+      this._tourDirector = new CinematicTourDirector(this);
+    }
+    this._tourDirector.start(scenarioId, duration);
+    return this._tourDirector;
+  }
+
+  /**
+   * Stop active cinematic tour
+   */
+  stopCinematicTour() {
+    if (this._tourDirector) {
+      this._tourDirector.stop();
+    }
+  }
+
   // ================= RAYCASTING & INTERACTION =================
 
   onPointerDown(event) {
+    this.stopCinematicTour();
     // Cancel active camera tween immediately on user pointer interaction
     this.animatingCamera = false;
     this.pointerDownPos = { x: event.clientX, y: event.clientY };
@@ -2174,11 +3305,27 @@ export class Viewer3D {
     this.camera.aspect = width / height;
     this.camera.updateProjectionMatrix();
     this.renderer.setSize(width, height);
+    if (this.composer) {
+      this.composer.setSize(width, height);
+    }
+    if (this.ssaoPass) {
+      this.ssaoPass.setSize(width, height);
+    }
     this._cutawayDirty = true;
+    this._invalidateShadowMap();
     this.invalidate();
   }
 
   // ================= RENDER ON DEMAND =================
+
+  setTourResolution(playing) {
+    if (!this.renderer) return;
+    const regular = Math.min(window.devicePixelRatio || 1, 1.5);
+    const pixelBudget = 440_000;
+    const { clientWidth, clientHeight } = this.container;
+    const ratio = playing ? Math.min(regular, Math.sqrt(pixelBudget / Math.max(1, clientWidth * clientHeight))) : regular;
+    this.renderer.setPixelRatio(ratio);
+  }
 
   _invalidateShadowMap() {
     if (this.renderer && this.renderer.shadowMap) {
@@ -2203,7 +3350,7 @@ export class Viewer3D {
     this._rafScheduled = false;
     if (this.isContextLost) return;
 
-    let keepLooping = false;
+    let keepLooping = this._tourDirector?.update(performance.now()) || false;
 
     // 1. Damped Camera Transition (600ms cubicOut)
     if (this.animatingCamera && this.targetCameraPos && this.targetLookAt) {
@@ -2259,7 +3406,7 @@ export class Viewer3D {
         this._needsRender = true;
         keepLooping = true;
       }
-    } else {
+    } else if (this.controls.enabled) {
       const controlsChanged = this.controls.update();
       if (controlsChanged) {
         this._cutawayDirty = true;
@@ -2274,9 +3421,20 @@ export class Viewer3D {
       this._cutawayDirty = false;
     }
 
-    // 4. Render Scene only if dirty
+    // 4. Render Scene only if dirty (Maintaining Render-On-Demand: 60 FPS when interacting, 0% GPU idle)
     if (this._needsRender) {
-      this.renderer.render(this.scene, this.camera);
+      this.updateRealBillboards();
+      if (this.composer && this.postProcessingEnabled && !this._tourDirector?.isPlaying) {
+        try {
+          this.composer.render();
+        } catch (e) {
+          console.warn('[Viewer3D] Postprocessing render fallback:', e);
+          this.postProcessingEnabled = false;
+          this.renderer.render(this.scene, this.camera);
+        }
+      } else {
+        this.renderer.render(this.scene, this.camera);
+      }
       this._needsRender = false;
     }
 

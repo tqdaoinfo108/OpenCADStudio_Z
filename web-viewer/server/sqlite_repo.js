@@ -87,6 +87,9 @@ export class SqliteProjectRepository extends ProjectRepository {
         room_types TEXT,
         placement_type TEXT,
         dimensions TEXT,
+        size_x REAL,
+        size_y REAL,
+        size_z REAL,
         tags TEXT,
         glb_path TEXT,
         is_builtin INTEGER DEFAULT 1,
@@ -106,85 +109,130 @@ export class SqliteProjectRepository extends ProjectRepository {
       );
     `);
 
+    // Safe schema migrations for real furniture catalog & dimensions
+    try { this.db.exec("ALTER TABLE furniture_assets ADD COLUMN asset_type TEXT DEFAULT 'model';"); } catch {}
+    try { this.db.exec("ALTER TABLE furniture_assets ADD COLUMN image_url TEXT;"); } catch {}
+    try { this.db.exec("ALTER TABLE furniture_assets ADD COLUMN thumbnail_url TEXT;"); } catch {}
+    try { this.db.exec("ALTER TABLE furniture_assets ADD COLUMN source_image_url TEXT;"); } catch {}
+    try { this.db.exec("ALTER TABLE furniture_assets ADD COLUMN variant_of TEXT;"); } catch {}
+    try { this.db.exec("ALTER TABLE furniture_assets ADD COLUMN aspect_ratio REAL DEFAULT 1.0;"); } catch {}
+    try { this.db.exec("ALTER TABLE furniture_assets ADD COLUMN description TEXT;"); } catch {}
+    try { this.db.exec("ALTER TABLE furniture_assets ADD COLUMN size_x REAL;"); } catch {}
+    try { this.db.exec("ALTER TABLE furniture_assets ADD COLUMN size_y REAL;"); } catch {}
+    try { this.db.exec("ALTER TABLE furniture_assets ADD COLUMN size_z REAL;"); } catch {}
+    try { this.db.exec("CREATE INDEX IF NOT EXISTS idx_furniture_asset_type ON furniture_assets(asset_type);"); } catch {}
+
+    // Backfill size_x, size_y, size_z from dimensions JSON for existing records
+    try {
+      const rowsWithoutSize = this.db.prepare("SELECT id, dimensions FROM furniture_assets WHERE size_x IS NULL OR size_y IS NULL OR size_z IS NULL").all();
+      if (rowsWithoutSize && rowsWithoutSize.length > 0) {
+        const updateStmt = this.db.prepare("UPDATE furniture_assets SET size_x = ?, size_y = ?, size_z = ? WHERE id = ?");
+        for (const row of rowsWithoutSize) {
+          let w = 1.0, d = 1.0, h = 1.0;
+          try {
+            const dims = typeof row.dimensions === 'string' ? JSON.parse(row.dimensions) : row.dimensions;
+            if (dims) {
+              w = Number(dims.width || dims.size_x || dims.x || 1.0);
+              d = Number(dims.depth || dims.size_y || dims.y || dims.length || 1.0);
+              h = Number(dims.height || dims.size_z || dims.z || 1.0);
+            }
+          } catch {}
+          updateStmt.run(w, d, h, row.id);
+        }
+      }
+    } catch (err) {
+      console.warn('[SqliteProjectRepository] Migration backfill size_x/y/z warning:', err.message);
+    }
+
     this.seedFurnitureCatalog();
   }
 
   /**
-   * Seed furniture_assets table with standard catalog items from asset_catalog.json
+   * Seed furniture_assets table with standard catalog items and real furniture catalog
    */
   seedFurnitureCatalog() {
     try {
-      const countStmt = this.db.prepare('SELECT count(*) as count FROM furniture_assets');
-      const countRow = countStmt.get();
-      if (Number(countRow.count) > 0) {
-        return;
-      }
+      this.db.exec(`UPDATE furniture_assets SET size_x=json_extract(dimensions,'$.width'),
+        size_y=json_extract(dimensions,'$.height'), size_z=json_extract(dimensions,'$.depth')
+        WHERE is_builtin=0 AND json_valid(dimensions) AND json_extract(dimensions,'$.width') > 0
+        AND json_extract(dimensions,'$.height') > 0 AND json_extract(dimensions,'$.depth') > 0;`);
+      this.db.exec("DELETE FROM furniture_assets WHERE asset_type = 'real';");
+      this.db.exec("UPDATE furniture_assets SET image_url='', thumbnail_url='', source_image_url='' WHERE COALESCE(image_url,'') <> '' OR COALESCE(thumbnail_url,'') <> '' OR COALESCE(source_image_url,'') <> '';");
 
-      // Locate asset_catalog.json in public or dist
-      const publicCatalog = path.resolve(__dirname, '..', 'public', 'assets', 'models', 'asset_catalog.json');
-      const distCatalog = path.resolve(__dirname, '..', 'dist', 'assets', 'models', 'asset_catalog.json');
-      const catalogPath = fs.existsSync(publicCatalog) ? publicCatalog : (fs.existsSync(distCatalog) ? distCatalog : null);
+        const publicCatalog = path.resolve(__dirname, '..', 'public', 'assets', 'models', 'asset_catalog.json');
+        const distCatalog = path.resolve(__dirname, '..', 'dist', 'assets', 'models', 'asset_catalog.json');
+        const catalogPath = fs.existsSync(publicCatalog) ? publicCatalog : (fs.existsSync(distCatalog) ? distCatalog : null);
 
-      if (!catalogPath) {
-        console.warn('[SqliteProjectRepository] asset_catalog.json not found to seed furniture_assets');
-        return;
-      }
+        if (catalogPath) {
+          const catalogData = JSON.parse(fs.readFileSync(catalogPath, 'utf8'));
+          const assets = catalogData.assets || [];
 
-      const catalogData = JSON.parse(fs.readFileSync(catalogPath, 'utf8'));
-      const assets = catalogData.assets || [];
+          const insertModelStmt = this.db.prepare(`
+            INSERT INTO furniture_assets (
+              id, asset_id, name, category, asset_type, room_types, placement_type, dimensions, size_x, size_y, size_z, tags, glb_path, is_builtin, created_at
+            ) VALUES (?, ?, ?, ?, 'model', ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
+            ON CONFLICT(asset_id) DO UPDATE SET dimensions=excluded.dimensions, size_x=excluded.size_x,
+              size_y=excluded.size_y, size_z=excluded.size_z, glb_path=excluded.glb_path
+            WHERE furniture_assets.is_builtin=1
+          `);
 
-      const insertStmt = this.db.prepare(`
-        INSERT OR IGNORE INTO furniture_assets (
-          id, asset_id, name, category, room_types, placement_type, dimensions, tags, glb_path, is_builtin, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `);
+          const preserveCustom = this.db.prepare(`UPDATE furniture_assets SET id=?, asset_id=?
+            WHERE asset_id=? AND is_builtin=0 AND NOT EXISTS (SELECT 1 FROM furniture_assets WHERE asset_id=?)`);
+          for (const item of assets) {
+            const assetId = item.asset_id || item.id;
+            const customId = 'custom_' + assetId;
+            preserveCustom.run(customId, customId, assetId, customId);
+            const name = item.name || assetId;
+            const category = item.category || 'living_room';
 
-      for (const item of assets) {
-        const assetId = item.asset_id || item.id;
-        const name = item.name || assetId;
-        const category = item.category || 'living_room';
+            let roomTypes = [category];
+            if (category === 'living_room') roomTypes = ['living_room', 'common'];
+            else if (category === 'kitchen_dining') roomTypes = ['kitchen', 'dining'];
+            else if (category === 'bedroom') roomTypes = ['bedroom', 'master_bedroom', 'kids_bedroom'];
+            else if (category === 'worship_rooftop') roomTypes = ['altar', 'terrace', 'balcony', 'rooftop'];
+            else if (category === 'bathroom_laundry') roomTypes = ['bathroom', 'wc', 'laundry'];
+            else if (category === 'greenery_architectural') roomTypes = ['living_room', 'balcony', 'corridor', 'terrace'];
 
-        let roomTypes = [category];
-        if (category === 'living_room') roomTypes = ['living_room', 'common'];
-        else if (category === 'kitchen_dining') roomTypes = ['kitchen', 'dining'];
-        else if (category === 'bedroom') roomTypes = ['bedroom', 'master_bedroom', 'kids_bedroom'];
-        else if (category === 'worship_rooftop') roomTypes = ['altar', 'terrace', 'balcony', 'rooftop'];
-        else if (category === 'bathroom_laundry') roomTypes = ['bathroom', 'wc', 'laundry'];
-        else if (category === 'greenery_architectural') roomTypes = ['living_room', 'balcony', 'corridor', 'terrace'];
+            let placementType = 'floor_free';
+            const idLower = assetId.toLowerCase();
+            if (
+              idLower.includes('sofa') || idLower.includes('tv_cabinet') || idLower.includes('shoe_cabinet') ||
+              idLower.includes('bed') || idLower.includes('wardrobe') || idLower.includes('desk') ||
+              idLower.includes('dressing') || idLower.includes('kitchen_system') || idLower.includes('fridge') ||
+              idLower.includes('altar') || idLower.includes('toilet') || idLower.includes('lavabo') ||
+              idLower.includes('bathtub') || idLower.includes('washer')
+            ) {
+              placementType = 'floor_wall_backed';
+            } else if (idLower.includes('door') || idLower.includes('window')) {
+              placementType = 'opening';
+            } else if (idLower.includes('stair') || idLower.includes('railing')) {
+              placementType = 'structural';
+            }
 
-        let placementType = 'floor_free';
-        const idLower = assetId.toLowerCase();
-        if (
-          idLower.includes('sofa') || idLower.includes('tv_cabinet') || idLower.includes('shoe_cabinet') ||
-          idLower.includes('bed') || idLower.includes('wardrobe') || idLower.includes('desk') ||
-          idLower.includes('dressing') || idLower.includes('kitchen_system') || idLower.includes('fridge') ||
-          idLower.includes('altar') || idLower.includes('toilet') || idLower.includes('lavabo') ||
-          idLower.includes('bathtub') || idLower.includes('washer')
-        ) {
-          placementType = 'floor_wall_backed';
-        } else if (idLower.includes('door') || idLower.includes('window')) {
-          placementType = 'opening';
-        } else if (idLower.includes('stair') || idLower.includes('railing')) {
-          placementType = 'structural';
+            const tags = [category, ...(item.legacyTypes || [])];
+            const glbPath = item.url || `/assets/models/${item.file || `${assetId}.glb`}`;
+            const dims = item.dimensions || { width: 1.0, depth: 1.0, height: 1.0 };
+            const sizeX = typeof item.size_x === 'number' ? item.size_x : Number(dims.width || dims.nativeWidth || 1.0);
+            const sizeY = typeof item.size_y === 'number' ? item.size_y : Number(dims.depth || dims.nativeDepth || 1.0);
+            const sizeZ = typeof item.size_z === 'number' ? item.size_z : Number(dims.height || dims.nativeHeight || 1.0);
+
+            insertModelStmt.run(
+              item.id || assetId,
+              assetId,
+              name,
+              category,
+              JSON.stringify(roomTypes),
+              placementType,
+              JSON.stringify(dims),
+              sizeX,
+              sizeY,
+              sizeZ,
+              JSON.stringify(tags),
+              glbPath,
+              new Date().toISOString()
+            );
+          }
         }
-
-        const tags = [category, ...(item.legacyTypes || [])];
-        const glbPath = item.url || `/assets/models/${item.file || `${assetId}.glb`}`;
-
-        insertStmt.run(
-          item.id || assetId,
-          assetId,
-          name,
-          category,
-          JSON.stringify(roomTypes),
-          placementType,
-          JSON.stringify(item.dimensions || { width: 1.0, depth: 1.0, height: 1.0 }),
-          JSON.stringify(tags),
-          glbPath,
-          1,
-          new Date().toISOString()
-        );
-      }
     } catch (err) {
       console.error('[SqliteProjectRepository] Error seeding furniture catalog:', err);
     }
@@ -257,6 +305,7 @@ export class SqliteProjectRepository extends ProjectRepository {
       ? projectData
       : ProjectDocument.fromJSON(projectData);
 
+    for (const floor of project.floors) floor.sanitizeLayout();
     const validation = project.validate();
     if (!validation.valid) {
       throw new Error(`Invalid project: ${validation.errors.join('; ')}`);
@@ -361,16 +410,30 @@ export class SqliteProjectRepository extends ProjectRepository {
   }
 
   /**
-   * Get furniture assets with optional category & search filter
+   * Get furniture assets with optional category, search & type filter
    * @param {Object} [filter]
    * @param {string} [filter.category]
    * @param {string} [filter.search]
+   * @param {string} [filter.type] - 'model' | 'real' | 'all'
+   * @param {string} [filter.asset_type]
    * @returns {Promise<Array<Object>>}
    */
   async getFurnitureAssets(filter = {}) {
     await this.init();
-    let query = 'SELECT id, asset_id, name, category, room_types, placement_type, dimensions, tags, glb_path, is_builtin, created_at FROM furniture_assets WHERE 1=1';
+    let query = 'SELECT id, asset_id, name, category, asset_type, image_url, thumbnail_url, source_image_url, variant_of, aspect_ratio, description, room_types, placement_type, dimensions, size_x, size_y, size_z, tags, glb_path, is_builtin, created_at FROM furniture_assets WHERE 1=1';
     const params = [];
+
+    const typeFilter = filter.type || filter.asset_type;
+    if (typeFilter && typeFilter !== 'all') {
+      if (typeFilter === 'real') {
+        query += " AND asset_type = 'real'";
+      } else if (typeFilter === 'model') {
+        query += " AND (asset_type = 'model' OR asset_type IS NULL)";
+      } else {
+        query += ' AND asset_type = ?';
+        params.push(typeFilter);
+      }
+    }
 
     if (filter.category && filter.category !== 'all') {
       query += ' AND category = ?';
@@ -399,14 +462,25 @@ export class SqliteProjectRepository extends ProjectRepository {
     const asset = new FurnitureAsset(assetData);
     const stmt = this.db.prepare(`
       INSERT INTO furniture_assets (
-        id, asset_id, name, category, room_types, placement_type, dimensions, tags, glb_path, is_builtin, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        id, asset_id, name, category, asset_type, image_url, thumbnail_url, source_image_url,
+        variant_of, aspect_ratio, description, room_types, placement_type, dimensions, size_x, size_y, size_z, tags, glb_path, is_builtin, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(asset_id) DO UPDATE SET
         name = excluded.name,
         category = excluded.category,
+        asset_type = excluded.asset_type,
+        image_url = excluded.image_url,
+        thumbnail_url = excluded.thumbnail_url,
+        source_image_url = excluded.source_image_url,
+        variant_of = excluded.variant_of,
+        aspect_ratio = excluded.aspect_ratio,
+        description = excluded.description,
         room_types = excluded.room_types,
         placement_type = excluded.placement_type,
         dimensions = excluded.dimensions,
+        size_x = excluded.size_x,
+        size_y = excluded.size_y,
+        size_z = excluded.size_z,
         tags = excluded.tags,
         glb_path = excluded.glb_path,
         is_builtin = excluded.is_builtin
@@ -416,9 +490,19 @@ export class SqliteProjectRepository extends ProjectRepository {
       asset.asset_id,
       asset.name,
       asset.category,
+      asset.asset_type,
+      asset.image_url,
+      asset.thumbnail_url,
+      asset.source_image_url,
+      asset.variant_of,
+      asset.aspect_ratio,
+      asset.description,
       JSON.stringify(asset.room_types),
       asset.placement_type,
       JSON.stringify(asset.dimensions),
+      asset.size_x,
+      asset.size_y,
+      asset.size_z,
       JSON.stringify(asset.tags),
       asset.glb_path,
       asset.is_builtin,
@@ -514,6 +598,8 @@ export class SqliteProjectRepository extends ProjectRepository {
 
     let seeded = 0;
     for (const p of projects) {
+      const existing = await this.findById(p.id);
+      if (p.metadata?.seedRevision && existing?.metadata?.seedRevision >= p.metadata.seedRevision) continue;
       await this.save(p);
       seeded++;
     }

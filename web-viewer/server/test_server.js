@@ -1,3 +1,4 @@
+import fs from 'node:fs';
 /**
  * test_server.js
  * Comprehensive automated test suite for Web Viewer backend:
@@ -8,6 +9,8 @@
  */
 
 import assert from 'node:assert/strict';
+import { furnitureType, roomAllowsFurniture, validateAndSanitizeFloorPlan } from '../js/architectural_layout.js';
+import { CadBimPipeline } from '../js/cad_bim_pipeline.js';
 import { ProjectDocument, FloorDocument, ChatMessage, FurnitureAsset, AiConfig } from './models.js';
 import { SqliteProjectRepository } from './sqlite_repo.js';
 import { MongoProjectRepository } from './mongo_repo.js';
@@ -65,11 +68,12 @@ async function runTests() {
 
   // Test Seed
   const seedRes = await sqliteRepo.seed(SEED_PROJECTS);
-  assert.equal(seedRes.seededCount, 2, 'Should seed 2 projects');
+  assert.equal(seedRes.seededCount, 3, 'Should seed 3 projects');
+  assert.equal((await sqliteRepo.seed(SEED_PROJECTS, true)).seededCount, 0);
   
   // Test findAll
   const allProjects = await sqliteRepo.findAll();
-  assert.equal(allProjects.length, 2, 'Should retrieve 2 seeded projects');
+  assert.equal(allProjects.length, 3, 'Should retrieve 3 seeded projects');
   assert.ok(allProjects.some(p => p.id === 'nha-pho-4-tang-5x8'));
   assert.ok(allProjects.some(p => p.id === 'biet-thu-san-vuon-3-tang-12x16'));
 
@@ -78,13 +82,13 @@ async function runTests() {
   assert.ok(townhouse, 'Townhouse project should be found');
   assert.equal(townhouse.floors.length, 4, 'Townhouse must have 4 floors');
   assert.equal(townhouse.lot_width, 5.0);
-  assert.equal(townhouse.lot_length, 8.0);
+  assert.equal(townhouse.lot_length, 10.0);
 
   const villa = await sqliteRepo.findById('biet-thu-san-vuon-3-tang-12x16');
   assert.ok(villa, 'Villa project should be found');
   assert.equal(villa.floors.length, 3, 'Villa must have 3 floors');
-  assert.equal(villa.lot_width, 18.0);
-  assert.equal(villa.lot_length, 24.0);
+  assert.equal(villa.lot_width, 10.0);
+  assert.equal(villa.lot_length, 14.0);
 
   // Test save & delete
   const newProj = new ProjectDocument({
@@ -104,7 +108,10 @@ async function runTests() {
 
   // Test Furniture Catalog Seed & Methods
   const catalogItems = await sqliteRepo.getFurnitureAssets();
-  assert.equal(catalogItems.length, 35, 'Catalog should be seeded with 35 items');
+  assert.ok(catalogItems.length >= 35, 'Catalog should be seeded with at least 35 items');
+  assert.ok(typeof catalogItems[0].size_x === 'number', 'Items must have numeric size_x');
+  assert.ok(typeof catalogItems[0].size_y === 'number', 'Items must have numeric size_y');
+  assert.ok(typeof catalogItems[0].size_z === 'number', 'Items must have numeric size_z');
   const livingItems = await sqliteRepo.getFurnitureAssets({ category: 'living_room' });
   assert.ok(livingItems.length >= 7, 'Should retrieve at least 7 living room items');
   const searchSofa = await sqliteRepo.getFurnitureAssets({ search: 'sofa' });
@@ -154,6 +161,35 @@ async function runTests() {
   await sqliteRepo.close();
   console.log('   ✓ SqliteProjectRepository CRUD, chat, furniture & AI config passed.');
 
+  // Check persisted room zoning and the BIM conversion of all three seeded projects.
+  const pipeline = new CadBimPipeline();
+  for (const sample of SEED_PROJECTS) {
+    const floors = pipeline.processStructuredCad(sample.toJSON()).floors;
+    for (const [index, floor] of floors.entries()) {
+      assert.equal(floor.height, 3.2);
+      assert.equal(floor.slabs[0].thickness, 0.18);
+      if (index > 0) assert.ok(floor.slabs[0].stairOpening);
+      assert.ok(floor.exteriorWalls.length >= 4 && floor.interiorWalls.length > 0);
+      for (const item of [...floor.furniture, ...floor.sanitary]) {
+        const room = floor.rooms.find(entry => entry.id === item.room_id);
+        assert.ok(room && roomAllowsFurniture(room, item), furnitureType(item));
+        const rotated = Math.abs(Math.sin(item.rotation)) > 0.9;
+        const halfX = (rotated ? item.depth : item.width) / 2;
+        const halfZ = (rotated ? item.width : item.depth) / 2;
+        const b = room.bounds;
+        assert.ok(item.cx - halfX >= b.minX + 0.149 && item.cx + halfX <= b.maxX - 0.149);
+        assert.ok(item.cy - halfZ >= b.minY + 0.149 && item.cy + halfZ <= b.maxY - 0.149);
+      }
+    }
+  }
+  const master = townhouse.floors[1];
+  const wet = master.rooms.find(room => room.type === 'bathroom');
+  const invalid = { asset_id: 'wardrobe_tall_glass', room_id: wet.id, cx: wet.x, cy: wet.y,
+    width: 1.25, depth: 0.65, anchor_wall: 'west', offset_along_wall: 1 };
+  const cleaned = validateAndSanitizeFloorPlan({ ...master, furniture: [...master.furniture, invalid] });
+  assert.equal(cleaned.furniture.length, master.furniture.length);
+  assert.ok(!cleaned.furniture.some(item => item.room_id === wet.id && furnitureType(item) === 'wardrobe'));
+
   // -------------------------------------------------------------
   // TEST 3: MongoProjectRepository Adapter
   // -------------------------------------------------------------
@@ -162,9 +198,9 @@ async function runTests() {
   await mongoRepo.init();
   await mongoRepo.seed(SEED_PROJECTS);
   const mongoList = await mongoRepo.findAll();
-  assert.equal(mongoList.length, 2);
+  assert.equal(mongoList.length, 3);
   const mongoVilla = await mongoRepo.findById('biet-thu-san-vuon-3-tang-12x16');
-  assert.equal(mongoVilla.title, 'Biệt thự Sân vườn 3 Tầng (12 × 16 m)');
+  assert.equal(mongoVilla.title, PROJECT_VILLA_GARDEN_3F.title);
   await mongoRepo.close();
   console.log('   ✓ MongoProjectRepository adapter passed.');
 
@@ -181,17 +217,17 @@ async function runTests() {
   assert.ok(townAnalysis, 'Analysis should return result');
   assert.equal(townAnalysis.source, 'offline_spatial_geometry_parser');
   assert.ok(townAnalysis.rooms.length >= 3, 'Should detect at least 3 rooms');
-  assert.equal(townAnalysis.metrics.grossAreaM2, 40.0);
+  assert.equal(townAnalysis.metrics.grossAreaM2, 50.0);
   assert.ok(townAnalysis.metrics.hasStairs);
   assert.ok(townAnalysis.fengShui.recommendations.length > 0);
   assert.ok(townAnalysis.costEstimationVND.total > 0);
 
-  // Test Floor 3 analysis of Villa (Altar & Gym & Sauna)
+  // Test Floor 3 analysis of the villa's bedroom and roof terrace
   const villaFloor3Analysis = await extractor.analyzeFloor({
     floorDocument: villa.floors[2]
   });
-  assert.ok(villaFloor3Analysis.rooms.some(r => r.zone === 'altar'));
-  assert.ok(villaFloor3Analysis.rooms.some(r => r.zone === 'gym'));
+  assert.ok(villaFloor3Analysis.rooms.some(r => r.zone === 'bedroom'));
+  assert.ok(villaFloor3Analysis.rooms.some(r => r.zone === 'outdoor'));
 
   // Test Image Base64 offline heuristic
   const mockBase64 = Buffer.from('FAKE_IMAGE_DATA_FLOORPLAN_PNG').toString('base64');
@@ -227,13 +263,13 @@ async function runTests() {
     assert.equal(resProjects.status, 200);
     const dataProjects = await resProjects.json();
     assert.equal(dataProjects.success, true);
-    assert.ok(dataProjects.count >= 2);
+    assert.ok(dataProjects.count >= 3);
 
     // 5.3 GET /api/projects/:id
     const resTown = await fetch(`${baseUrl}/api/projects/nha-pho-4-tang-5x8`);
     assert.equal(resTown.status, 200);
     const dataTown = await resTown.json();
-    assert.equal(dataTown.data.title, 'Nhà phố 4 Tầng Hiện Đại (5 × 8 m)');
+    assert.equal(dataTown.data.title, PROJECT_TOWNHOUSE_4F.title);
     assert.equal(dataTown.data.floors.length, 4);
 
     // 5.4 POST /api/projects/:id/analyze-floor
@@ -341,15 +377,25 @@ async function runTests() {
     assert.ok(dataTestConn.success);
     assert.ok(typeof dataTestConn.latencyMs === 'number');
 
-    // 5.11 Furniture Assets API: GET /api/furniture-assets
+    // 5.11 Furniture Assets API: GET /api/furniture-assets & /api/furniture
     const resFurnGet = await fetch(`${baseUrl}/api/furniture-assets?category=living_room`);
     assert.equal(resFurnGet.status, 200);
     const dataFurnGet = await resFurnGet.json();
     assert.ok(dataFurnGet.success);
     assert.ok(dataFurnGet.count >= 7);
+    assert.ok(typeof dataFurnGet.assets[0].size_x === 'number');
+    assert.ok(typeof dataFurnGet.assets[0].size_y === 'number');
+    assert.ok(typeof dataFurnGet.assets[0].size_z === 'number');
+
+    const resFurnAlias = await fetch(`${baseUrl}/api/furniture`);
+    assert.equal(resFurnAlias.status, 200);
+    const dataFurnAlias = await resFurnAlias.json();
+    assert.ok(dataFurnAlias.success);
+    assert.ok(dataFurnAlias.assets.length >= 35);
+    assert.ok(typeof dataFurnAlias.assets[0].size_x === 'number');
 
     // 5.12 Furniture Assets API: POST /api/furniture-assets & DELETE /api/furniture-assets/:id
-    const dummyGlbBase64 = Buffer.from('glTF-CUSTOM-TEST-MODEL-BIN').toString('base64');
+    const dummyGlbBase64 = fs.readFileSync(new URL('../public/assets/models/armchair_lounge.glb',import.meta.url)).toString('base64');
     const resFurnPost = await fetch(`${baseUrl}/api/furniture-assets`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

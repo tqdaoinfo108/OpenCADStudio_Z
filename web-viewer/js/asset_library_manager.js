@@ -132,6 +132,32 @@ export class AssetLibraryManager {
     this._fallbackShadowMat = null;
     this._fallbackShadowGeo = null;
 
+    // Dual-Mode Mapping: 3D Model Asset ID -> Photorealistic Real Impostor Asset ID
+    this.variantOfMap = new Map([
+      ['sofa_l_modern', 'real_sofa_l_modern'],
+      ['sofa_straight_3seat', 'real_sofa_l_modern'],
+      ['coffee_table_set', 'real_coffee_table_set'],
+      ['tv_cabinet_wall_unit', 'real_tv_cabinet'],
+      ['dining_table_6chairs', 'real_dining_table_6chairs'],
+      ['dining_table_4chairs', 'real_dining_table_6chairs'],
+      ['kitchen_system_l', 'real_kitchen_system_l'],
+      ['kitchen_system_i', 'real_kitchen_system_l'],
+      ['kitchen_island_bar', 'real_kitchen_system_l'],
+      ['bed_master_king', 'real_bed_master_king'],
+      ['bed_queen_modern', 'real_bed_master_king'],
+      ['bed_bunk_kids', 'real_bed_master_king'],
+      ['wardrobe_tall_glass', 'real_wardrobe'],
+      ['work_desk_computer', 'real_work_desk'],
+      ['dressing_table_mirror', 'real_lavabo_vanity'],
+      ['vietnamese_worship_altar', 'real_worship_altar'],
+      ['lavabo_vanity_led_mirror', 'real_lavabo_vanity'],
+      ['toilet_onepiece', 'real_toilet'],
+      ['indoor_potted_ficus', 'real_potted_plant'],
+      ['balcony_planter_greenery', 'real_potted_plant']
+    ]);
+    this.realManifest = [];
+    this.furnitureMode = 'model'; // 'model' | 'real'
+
     AssetLibraryManager._instance = this;
   }
 
@@ -336,6 +362,18 @@ export class AssetLibraryManager {
       }
 
       this.catalog = this._normalizeCatalogData(rawCatalog);
+      try {
+        const response = await fetch('/api/furniture-assets?type=model');
+        if (response.ok) {
+          const records = (await response.json()).data || [];
+          const ids = new Set(this.catalog.map(entry => entry.id));
+          this.catalog.push(...records.filter(record => !ids.has(record.asset_id) && record.glb_path)
+            .map(record => ({ ...record, id:record.asset_id, url:record.glb_path })));
+        }
+      } catch {
+        // Built-in models remain available on static deployments.
+      }
+
       this.totalCount = this.catalog.length;
       this.loadedCount = 0;
       this.failedCount = 0;
@@ -391,6 +429,12 @@ export class AssetLibraryManager {
   /**
    * Load a single .glb file via fetch + GLTFLoader.parse (or GLTFLoader.load fallback)
    */
+  async loadRegisteredAsset(record) {
+    const entry = { ...record, id:record.asset_id, url:record.glb_path };
+    const gltf = await this._loadSingleGlb(entry.url);
+    this._registerTemplate(entry.id, gltf, entry);
+  }
+
   async _loadSingleGlb(url) {
     if (typeof fetch === 'function') {
       const response = await fetch(url);
@@ -660,14 +704,28 @@ export class AssetLibraryManager {
   /**
    * Instantiate a GPU-shared shallow clone of a preloaded .glb asset,
    * scaled and rotated to fit targetItem (or fall back to FurnitureGenerator if not yet loaded).
+   * Supports dual-mode: 'model' (3D procedural GLB) or 'real' (photorealistic impostor GLB).
    *
    * @param {string} assetId
    * @param {Object} [targetItem]
    * @param {Object} [materials]
+   * @param {Object} [options]
+   * @param {string} [options.furnitureMode] - 'model' | 'real'
    * @returns {THREE.Group}
    */
-  instantiateAsset(assetId, targetItem = {}, materials = null) {
-    const resolvedId = this.resolveAssetId(assetId, targetItem);
+  instantiateAsset(assetId, targetItem = {}, materials = null, options = {}) {
+    const furnMode = options.furnitureMode || targetItem.furnitureMode || this.furnitureMode || 'model';
+    let resolvedId = this.resolveAssetId(assetId, targetItem);
+
+    if (furnMode === 'real') {
+      if (this.variantOfMap.has(resolvedId)) {
+        const realCandidate = this.variantOfMap.get(resolvedId);
+        if (this.templates.has(realCandidate)) {
+          resolvedId = realCandidate;
+        }
+      }
+    }
+
     const tpl = this.templates.get(resolvedId);
 
     if (!tpl) {
@@ -688,9 +746,21 @@ export class AssetLibraryManager {
     const inner = new THREE.Group();
     const clonedScene = tpl.scene.clone(true);
 
+    let billboardMesh = null;
+
     // Ensure cloned mesh userData preserves shared flags & ContactShadowPlane metadata
     clonedScene.traverse((child) => {
       if (child.isMesh) {
+        const isBillboard = child.name === 'RealFurnitureBillboard' || Boolean(child.userData?.isRealBillboard);
+        if (isBillboard) {
+          billboardMesh = child;
+          child.userData = {
+            ...(child.userData || {}),
+            isRealBillboard: true,
+            assetId: resolvedId
+          };
+        }
+
         const isShadow = child.name === 'ContactShadowPlane' || Boolean(child.userData?.isContactShadow);
         if (isShadow) {
           child.castShadow = false;
@@ -777,14 +847,16 @@ export class AssetLibraryManager {
       asset_id: resolvedId,
       isGlbAsset: true,
       isSharedGeometry: true,
-      isSharedPBR: true
+      isSharedPBR: true,
+      isRealBillboard: Boolean(billboardMesh),
+      billboardMesh: billboardMesh
     };
 
     return root;
   }
 
-  static instantiateAsset(assetId, targetItem = {}, materials = null) {
-    return this.getInstance().instantiateAsset(assetId, targetItem, materials);
+  static instantiateAsset(assetId, targetItem = {}, materials = null, options = {}) {
+    return this.getInstance().instantiateAsset(assetId, targetItem, materials, options);
   }
 }
 

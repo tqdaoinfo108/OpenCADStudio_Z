@@ -1,3 +1,4 @@
+import { normalizeRoom, validateAndSanitizeFloorPlan } from '../js/architectural_layout.js';
 /**
  * ai_vision_extractor.js
  * OpenCADStudio_Z / Nếp Nhà - Web Viewer Backend
@@ -47,7 +48,10 @@ export const ASSET_CATALOG_IDS = [
   'door_balcony_glass',
   'window_casement_glass',
   'stair_flight_straight',
-  'stair_flight_u_turn'
+  'stair_flight_u_turn',
+  'nightstand_oak','console_walnut','side_table_granite','bar_stool_oak','ceramic_vase',
+  'floor_lamp_brass','bench_velvet','arch_mirror_brass','ceramic_planter_leaf','oak_bookcase',
+  'pedestal_dining_oak','outdoor_planter_low','worship_screen_oak'
 ];
 
 export const ASSET_CATALOG_SET = new Set(ASSET_CATALOG_IDS);
@@ -133,6 +137,10 @@ export class AiVisionExtractor {
     return `Bạn là chuyên gia kiến trúc và BIM 3D cao cấp của hệ thống "Nếp Nhà - OpenCADStudio".
 Nhiệm vụ của bạn là phân tích bản vẽ mặt bằng 2D và trích xuất không gian phòng, nội thất, cửa đi, cửa sổ, cầu thang sang mô hình 3D chuẩn glTF 2.0 (.glb).
 
+Khai báo rooms trước furniture. Mỗi phòng có room_id duy nhất, zone, x_min, x_max, z_min, z_max theo mét. Các hình chữ nhật nằm trong sàn, không chồng lấn, dùng chung đúng tọa độ tại vách liền kề. Khai báo cửa thông giữa phòng và hành lang trên ranh giới đã khai báo. Tường ngăn được dựng từ các ranh giới.
+Mỗi món đồ có room_id, anchor_wall (north, south, west, east hoặc center), offset_along_wall tính bằng mét từ đầu trục tăng của phòng, và width, depth, height. Với center, offset được đo trên trục X và nội thất bắt đầu ở giữa chiều sâu phòng. Không tự đặt cx, cy hoặc rotation.
+WC chỉ có bồn cầu, lavabo, vách tắm, bồn tắm hoặc máy giặt. Phân khu đồ phòng ngủ, phòng khách, bếp và phòng thờ theo chức năng, giữ trống vùng mở cửa và trước cửa sổ.
+
 DANH MỤC 35 MÃ TÀI SẢN 3D CHUẨN (asset_id):
 - Phòng khách (Living Room): "sofa_l_modern", "sofa_straight_3seat", "armchair_lounge", "coffee_table_set", "tv_cabinet_wall_unit", "entrance_shoe_cabinet", "floor_rug_textured"
 - Bếp & Phòng ăn (Kitchen & Dining): "kitchen_system_i", "kitchen_system_l", "kitchen_island_bar", "fridge_double_door", "dining_table_6chairs", "dining_table_4chairs"
@@ -169,11 +177,19 @@ QUY ƯỚC GÓC XOAY 3D (rotation tính bằng radian quanh trục Y):
             type: 'array',
             items: {
               type: 'object',
-              required: ['name', 'areaM2', 'zone'],
+              required: ['room_id', 'name', 'areaM2', 'zone', 'x_min', 'x_max', 'z_min', 'z_max'],
               properties: {
                 name: { type: 'string' },
+                room_id: { type: 'string' },
+                x_min: { type: 'number' },
+                x_max: { type: 'number' },
+                z_min: { type: 'number' },
+                z_max: { type: 'number' },
                 areaM2: { type: 'number' },
-                zone: { type: 'string' },
+                zone: { type: 'string', enum: [
+                  'living', 'bedroom', 'bathroom', 'wc', 'kitchen', 'dining', 'worship', 'office',
+                  'circulation', 'laundry', 'terrace', 'garden', 'garage', 'common'
+                ] },
                 notes: { type: 'string' }
               }
             }
@@ -182,18 +198,18 @@ QUY ƯỚC GÓC XOAY 3D (rotation tính bằng radian quanh trục Y):
             type: 'array',
             items: {
               type: 'object',
-              required: ['asset_id', 'type', 'name', 'rotation'],
+              required: ['asset_id', 'type', 'name', 'room_id', 'anchor_wall', 'offset_along_wall', 'width', 'depth', 'height'],
               properties: {
                 asset_id: { type: 'string', enum: ASSET_CATALOG_IDS },
                 type: { type: 'string' },
                 name: { type: 'string' },
                 location: { type: 'string' },
-                cx: { type: 'number' },
-                cy: { type: 'number' },
+                room_id: { type: 'string' },
+                anchor_wall: { type: 'string', enum: ['north', 'south', 'east', 'west', 'center'] },
+                offset_along_wall: { type: 'number', minimum: 0 },
                 width: { type: 'number' },
                 depth: { type: 'number' },
-                height: { type: 'number' },
-                rotation: { type: 'number' }
+                height: { type: 'number' }
               }
             }
           },
@@ -225,6 +241,15 @@ QUY ƯỚC GÓC XOAY 3D (rotation tính bằng radian quanh trục Y):
                 height: { type: 'number' },
                 rotation: { type: 'number' }
               }
+            }
+          },
+          metrics: {
+            type: 'object',
+            properties: {
+              grossAreaM2: { type: 'number' },
+              usableAreaM2: { type: 'number' },
+              circulationRatioPct: { type: 'number' },
+              daylightExposurePct: { type: 'number' }
             }
           },
           stairs: {
@@ -262,7 +287,7 @@ QUY ƯỚC GÓC XOAY 3D (rotation tính bằng radian quanh trục Y):
     const userPrompt = `Hãy phân tích bản vẽ mặt bằng kiến trúc này (${floorContext.name || 'Mặt bằng tầng'}).
 Mỗi vật dụng nội thất (furniture), cửa đi (doors), cửa sổ (windows) và cầu thang (stairs) PHẢI có trường "asset_id" thuộc đúng danh sách 35 mã chuẩn:
 ${JSON.stringify(ASSET_CATALOG_IDS)}
-và trường "rotation" (radian: 0, 3.14159, 1.5708, hoặc -1.5708) căn chỉnh lưng sát tường gần nhất.
+Cửa đi, cửa sổ và cầu thang có rotation (radian). Nội thất khai báo room_id, anchor_wall và offset_along_wall theo quy tắc hệ lưới phòng.
 
 Trả về kết quả DUY NHẤT dưới dạng JSON hợp lệ (không kèm markdown \`\`\`json) với cấu trúc sau:
 {
@@ -272,10 +297,10 @@ Trả về kết quả DUY NHẤT dưới dạng JSON hợp lệ (không kèm ma
   "confidence": 0.94,
   "summary": "Tóm tắt không gian kiến trúc tầng",
   "rooms": [
-    { "name": "Tên phòng", "areaM2": 20.5, "zone": "living|bedroom|kitchen|sanitary|circulation|altar|gym|outdoor", "notes": "Mô tả bố trí" }
+    { "room_id": "living_1", "name": "Phòng khách", "areaM2": 20, "zone": "living", "x_min": 0, "x_max": 5, "z_min": 0, "z_max": 4 }
   ],
   "furniture": [
-    { "asset_id": "sofa_l_modern", "type": "sofa_sectional", "name": "Sofa góc chữ L", "location": "Phòng khách", "cx": 1.8, "cy": 2.2, "width": 2.4, "depth": 1.6, "height": 0.85, "rotation": 1.5708 }
+    { "asset_id": "sofa_l_modern", "type": "sofa", "name": "Sofa góc chữ L", "room_id": "living_1", "anchor_wall": "west", "offset_along_wall": 2.2, "width": 2.4, "depth": 1.6, "height": 0.85 }
   ],
   "doors": [
     { "asset_id": "door_balcony_glass", "x": 2.5, "y": 0.1, "width": 1.6, "height": 2.2, "rotation": 0 }
@@ -347,15 +372,16 @@ Trả về kết quả DUY NHẤT dưới dạng JSON hợp lệ (không kèm ma
     const jsonStr = content.replace(/^```json\s*/i, '').replace(/\s*```$/, '').trim();
     const parsed = JSON.parse(jsonStr);
 
-    // Ensure every extracted item carries a valid asset_id and rotation
-    if (Array.isArray(parsed.furniture)) {
-      parsed.furniture = parsed.furniture.map(item => ({
-        ...item,
-        asset_id: ASSET_CATALOG_SET.has(item.asset_id) ? item.asset_id : this.mapTypeToAssetId(item.type, item.name),
-        rotation: typeof item.rotation === 'number' ? item.rotation : 0
-      }));
-    }
-    return parsed;
+    const validRoomGrid = Array.isArray(parsed.rooms) && parsed.rooms.length > 0 &&
+      parsed.rooms.every(room => room.room_id && normalizeRoom(room));
+    if (!validRoomGrid) throw new Error('The spatial analysis did not return a valid room grid.');
+    const anchors = new Set(['north', 'south', 'east', 'west', 'center']);
+    parsed.furniture = (Array.isArray(parsed.furniture) ? parsed.furniture : [])
+      .filter(item => item.room_id && anchors.has(item.anchor_wall) &&
+        [item.offset_along_wall, item.width, item.depth, item.height].every(n => Number.isFinite(n) && n >= 0))
+      .map(item => ({ ...item, asset_id: ASSET_CATALOG_SET.has(item.asset_id)
+        ? item.asset_id : this.mapTypeToAssetId(item.type, item.name) }));
+    return validateAndSanitizeFloorPlan({ ...parsed, metadata: { roomGrid: true } });
   }
 
   /**

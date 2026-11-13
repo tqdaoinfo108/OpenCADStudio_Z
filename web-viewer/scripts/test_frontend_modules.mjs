@@ -134,8 +134,10 @@ assert.ok(indexHtml.includes('id="btn-presentation-mode"'), 'Must have #btn-pres
 assert.ok(indexHtml.includes('id="btn-ai-settings"'), 'Must have #btn-ai-settings in header');
 assert.ok(indexHtml.includes('id="btn-furniture-store"'), 'Must have #btn-furniture-store in header');
 assert.ok(indexHtml.includes('id="btn-toggle-chat"'), 'Must have #btn-toggle-chat in header');
-assert.ok(indexHtml.includes('id="presentation-toolbar"'), 'Must have #presentation-toolbar in viewport');
-assert.ok(indexHtml.includes('id="btn-exit-presentation"'), 'Must have #btn-exit-presentation in presentation toolbar');
+for (const id of ['btn-exit-presentation', 'btn-presentation-cinematic-tour', 'btn-presentation-fullscreen']) {
+  assert.ok(!indexHtml.includes('id="' + id + '"'), 'Removed presentation button: ' + id);
+}
+assert.ok(indexHtml.includes('id="btn-view-tour-3d"'), 'Must have Tour 3D in the viewport dock');
 assert.ok(indexHtml.includes('id="modal-ai-settings"'), 'Must have #modal-ai-settings');
 assert.ok(indexHtml.includes('id="modal-furniture-store"'), 'Must have #modal-furniture-store');
 assert.ok(indexHtml.includes('id="modal-add-furniture"'), 'Must have #modal-add-furniture');
@@ -148,7 +150,6 @@ const styleCss = fs.readFileSync(path.join(ROOT, 'css', 'style.css'), 'utf8');
 
 assert.ok(styleCss.includes('body.presentation-mode .app-header'), 'Must hide app-header in presentation-mode');
 assert.ok(styleCss.includes('body.presentation-mode .ai-chat-panel'), 'Must hide ai-chat-panel in presentation-mode');
-assert.ok(styleCss.includes('.presentation-toolbar'), 'Must have .presentation-toolbar styles');
 assert.ok(styleCss.includes('.ai-presets-grid'), 'Must have .ai-presets-grid styles');
 assert.ok(styleCss.includes('.furniture-store-grid'), 'Must have .furniture-store-grid styles');
 assert.ok(styleCss.includes('.phase-progress-step'), 'Must have 4-phase step styles');

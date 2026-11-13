@@ -75,7 +75,14 @@ export class FurnitureGenerator {
     geo.rotateX(Math.PI / 2);
     geo.center();
     geo.computeVertexNormals();
-    geo.userData = { isSharedGeometry: true, isSharedPBR: true };
+    geo.userData = {
+      isSharedGeometry: true,
+      isSharedPBR: true,
+      bevelEnabled: true,
+      chamfered: true,
+      bevelSize: r,
+      bevelSegments: seg
+    };
     geo._realDispose = geo.dispose.bind(geo);
     geo.dispose = () => {};
 
@@ -1580,6 +1587,24 @@ export class FurnitureGenerator {
     const d = Math.max(1.8, stairData.depth || 2.8);
     const rise = Math.max(2.6, stairData.rise || 3.6);
     const totalSteps = Math.max(16, stairData.stepsCount || 20);
+    if (stairData.asset_id === 'stair_flight_straight') {
+      const stepH = rise / totalSteps;
+      const stepD = d / totalSteps;
+      const tread = new THREE.BoxGeometry(w, 0.04, stepD + 0.015);
+      for (let i = 0; i < totalSteps; i++) {
+        const y = (i + 1) * stepH;
+        const z = -d / 2 + (i + 0.5) * stepD;
+        const body = new THREE.Mesh(new THREE.BoxGeometry(w, y - 0.04, stepD), mats.stairRiser);
+        body.position.set(0, (y - 0.04) / 2, z);
+        const top = new THREE.Mesh(tread, mats.woodOak);
+        top.position.set(0, y - 0.02, z);
+        body.castShadow = top.castShadow = true;
+        body.receiveShadow = top.receiveShadow = true;
+        group.add(body, top);
+      }
+      group.rotation.y = stairData.rotation || 0;
+      return group;
+    }
     const halfSteps = Math.floor(totalSteps / 2);
 
     const landingD = Math.min(0.95, d * 0.34);
@@ -1598,7 +1623,7 @@ export class FurnitureGenerator {
 
     // 1. Flight 1 (going up from -Z toward +Z landing) + Flight 2 (going up from +Z landing toward -Z)
     const treadGeo = this.createRoundedBoxGeometry(flightW, treadThick, stepD + nosing, 0.008, 1);
-    const riserGeo = new THREE.BoxGeometry(flightW - 0.01, stepH, 0.018);
+    const riserGeo = this.createRoundedBoxGeometry(flightW - 0.01, stepH, 0.018, 0.002, 1);
     const balusterGeo = new THREE.CylinderGeometry(0.009, 0.009, 0.90, 6, 1);
     balusterGeo.computeVertexNormals();
 
@@ -1646,7 +1671,7 @@ export class FurnitureGenerator {
     // 2. Angled Structural Stringer Beams Underneath Flight 1 & Flight 2
     const flightLen = Math.hypot(flightRun, midY);
     const flightAngle = Math.atan2(midY, flightRun);
-    const stringerGeo = new THREE.BoxGeometry(0.08, 0.18, flightLen);
+    const stringerGeo = this.createRoundedBoxGeometry(0.08, 0.18, flightLen, 0.003, 1);
 
     const stringer1 = new THREE.Mesh(stringerGeo, mats.concreteSlab);
     stringer1.position.set(flight1X, midY / 2 - 0.09, startZ + flightRun / 2);
@@ -1660,7 +1685,7 @@ export class FurnitureGenerator {
 
     // 3. Mid-Landing Platform with Oak Finish & Baseboard
     const landSlab = new THREE.Mesh(
-      new THREE.BoxGeometry(w, 0.16, landingD),
+      this.createRoundedBoxGeometry(w, 0.16, landingD, 0.003, 1),
       mats.concreteSlab
     );
     landSlab.position.set(0, midY - 0.08, landingZ);
@@ -1672,7 +1697,7 @@ export class FurnitureGenerator {
     this._markPrimary(landSlab, landTop);
 
     const landBaseboard = new THREE.Mesh(
-      new THREE.BoxGeometry(w - 0.02, 0.08, 0.02),
+      this.createRoundedBoxGeometry(w - 0.02, 0.08, 0.02, 0.002, 1),
       mats.baseboardMat
     );
     landBaseboard.position.set(0, midY + 0.04, d / 2 - 0.01);
@@ -1724,7 +1749,7 @@ export class FurnitureGenerator {
     const w = doorData.width || 0.92;
     const h = doorData.height || 2.20;
     const frameDepth = (doorData.wallThickness || 0.18) + 0.03;
-    const jambW = 0.055;
+    const jambW = 0.05;
 
     if (doorData.x !== undefined && doorData.y !== undefined) {
       group.position.set(doorData.x, 0, doorData.y);
@@ -1825,7 +1850,7 @@ export class FurnitureGenerator {
       group.rotation.y = -angle;
     }
 
-    const barT = 0.055;
+    const barT = 0.05;
 
     // 1. Perimeter Aluminum Frame (Top, Bottom, Left, Right)
     const hBarGeo = new THREE.BoxGeometry(length, barT, frameDepth);
